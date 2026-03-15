@@ -26,16 +26,46 @@ import shutil
 import tempfile
 
 
-CHAIR_XML = """    <body name="chair" pos="1.5 0 0.25">
+CHAIR_XML = """    <body name="chair" pos="1.8 0 0">
       <freejoint/>
-      <geom type="box" size="0.25 0.25 0.25" rgba="0.6 0.4 0.2 1" mass="5"/>
+      <!-- seat -->
+      <geom type="box" size="0.22 0.22 0.03" pos="0 0 0.46" rgba="0.55 0.35 0.15 1" mass="3"/>
+      <!-- backrest -->
+      <geom type="box" size="0.22 0.03 0.28" pos="0 -0.19 0.77" rgba="0.55 0.35 0.15 1" mass="1"/>
+      <!-- front-left leg -->
+      <geom type="cylinder" size="0.025 0.23" pos="-0.17 0.15 0.23" rgba="0.4 0.25 0.1 1" mass="0.5"/>
+      <!-- front-right leg -->
+      <geom type="cylinder" size="0.025 0.23" pos=" 0.17 0.15 0.23" rgba="0.4 0.25 0.1 1" mass="0.5"/>
+      <!-- back-left leg -->
+      <geom type="cylinder" size="0.025 0.23" pos="-0.17 -0.19 0.23" rgba="0.4 0.25 0.1 1" mass="0.5"/>
+      <!-- back-right leg -->
+      <geom type="cylinder" size="0.025 0.23" pos=" 0.17 -0.19 0.23" rgba="0.4 0.25 0.1 1" mass="0.5"/>
     </body>"""
 
 CAMERA_XML = """    <camera name="front_camera" pos="0 -3 1.5" xyaxes="1 0 0 0 0.5 1"/>"""
 
-PERSON_MARKER_XML = """    <body name="person_marker" pos="3.0 0 0.9">
+PERSON_MARKER_XML = """    <body name="person_marker" pos="-1.5 0 0">
       <freejoint/>
-      <geom type="cylinder" size="0.2 0.9" rgba="0.2 0.5 0.9 0.5"/>
+      <!-- head -->
+      <geom type="sphere" size="0.11" pos="0 0 1.62" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
+      <!-- torso -->
+      <geom type="capsule" size="0.13 0.25" pos="0 0 1.15" rgba="0.3 0.4 0.7 1" contype="0" conaffinity="0"/>
+      <!-- left upper arm -->
+      <geom type="capsule" size="0.04 0.13" pos="0.22 0 1.25" euler="0 90 0" rgba="0.3 0.4 0.7 1" contype="0" conaffinity="0"/>
+      <!-- right upper arm -->
+      <geom type="capsule" size="0.04 0.13" pos="-0.22 0 1.25" euler="0 90 0" rgba="0.3 0.4 0.7 1" contype="0" conaffinity="0"/>
+      <!-- pelvis -->
+      <geom type="box" size="0.11 0.07 0.07" pos="0 0 0.78" rgba="0.2 0.2 0.6 1" contype="0" conaffinity="0"/>
+      <!-- left thigh -->
+      <geom type="capsule" size="0.05 0.2" pos="0.09 0 0.52" rgba="0.2 0.2 0.6 1" contype="0" conaffinity="0"/>
+      <!-- right thigh -->
+      <geom type="capsule" size="0.05 0.2" pos="-0.09 0 0.52" rgba="0.2 0.2 0.6 1" contype="0" conaffinity="0"/>
+      <!-- left shin -->
+      <geom type="capsule" size="0.04 0.18" pos="0.09 0 0.22" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
+      <!-- right shin -->
+      <geom type="capsule" size="0.04 0.18" pos="-0.09 0 0.22" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
+      <!-- mass carrier (invisible) -->
+      <geom type="sphere" size="0.01" pos="0 0 0.9" rgba="0 0 0 0" mass="60"/>
     </body>"""
 
 

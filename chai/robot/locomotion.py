@@ -57,8 +57,27 @@ class LocomotionController:
             self._pd_step(vx, vy, omega)
 
     def _pd_step(self, vx, vy, omega):
-        # PD on joints (standing pose)
         target = np.zeros(self.model.nu)
+
+        if vx > 0.01 and self.policy is None:
+            t = self.data.time
+            freq = 1.5
+            amp = min(0.4, vx * 1.0)
+            phase = 2 * np.pi * freq * t
+            # L leg forward swing (hip_pitch = index 0, hip_roll = index 1)
+            target[0]  = -amp * np.sin(phase)                   # L hip_pitch
+            target[1]  =  0.06 * np.sin(phase)                  # L hip_roll (lateral sway)
+            target[3]  =  amp * max(0, np.sin(phase))           # L knee
+            target[4]  = -amp * 0.5 * np.sin(phase)            # L ankle
+            # R leg forward swing (hip_pitch = index 6, hip_roll = index 7)
+            target[6]  = -amp * np.sin(phase + np.pi)           # R hip_pitch
+            target[7]  = -0.06 * np.sin(phase)                  # R hip_roll (lateral sway, mirror)
+            target[9]  =  amp * max(0, np.sin(phase + np.pi))  # R knee
+            target[10] = -amp * 0.5 * np.sin(phase + np.pi)    # R ankle
+            # Arm swing (opposite to ipsilateral leg)
+            target[15] =  0.3 * np.sin(phase + np.pi)          # L shoulder_pitch
+            target[22] =  0.3 * np.sin(phase)                  # R shoulder_pitch
+
         qpos = self.data.qpos[7:]
         qvel = self.data.qvel[6:]
         n = min(len(target), len(_KP))

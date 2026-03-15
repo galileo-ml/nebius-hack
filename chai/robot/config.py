@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), "../../.env.local"))
 
 MODE = "sim"  # "sim" or "real"
 
@@ -14,5 +17,5 @@ REAL_CONFIG = {
 
 TOKEN_FACTORY_BASE_URL = "https://api.studio.nebius.ai/v1"
 TOKEN_FACTORY_API_KEY  = os.environ.get("NEBIUS_API_KEY", "")
-VLM_MODEL              = "Qwen/Qwen2-VL-72B-Instruct"
+VLM_MODEL              = "Qwen/Qwen2.5-VL-72B-Instruct"
 LLM_MODEL              = "meta-llama/Llama-3.3-70B-Instruct"

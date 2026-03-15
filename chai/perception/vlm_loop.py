@@ -19,8 +19,9 @@ class PerceptionLoop:
             "human":    {"detected": False, "distance": None, "approaching": False},
             "obstacle": {"detected": False, "position": None, "side": None}
         }
-        self._lock    = threading.Lock()
-        self._running = False
+        self._lock        = threading.Lock()
+        self._running     = False
+        self._has_result  = False
 
     def _capture_frame_base64(self):
         """Get current camera frame as base64 string."""
@@ -31,6 +32,8 @@ class PerceptionLoop:
         return base64.b64encode(buf.getvalue()).decode()
 
     def _query_vlm(self, prompt, image_b64):
+        label = "obstacle" if "obstacle" in prompt[:30].lower() else "human"
+        print(f"[VLM] calling {VLM_MODEL} for {label} detection")
         response = self.client.chat.completions.create(
             model=VLM_MODEL,
             messages=[{
@@ -45,6 +48,7 @@ class PerceptionLoop:
         raw = response.choices[0].message.content.strip()
         # Strip markdown fences if present
         raw = raw.replace("```json", "").replace("```", "").strip()
+        print(f"[VLM] {label} result: {raw[:80]}")
         return json.loads(raw)
 
     def _human_loop(self):
@@ -58,6 +62,10 @@ class PerceptionLoop:
                 print(f"[Human perception error] {e}")
             time.sleep(0.5)  # 2fps
 
+    @property
+    def ready(self):
+        return self._has_result
+
     def _obstacle_loop(self):
         while self._running:
             try:
@@ -65,6 +73,7 @@ class PerceptionLoop:
                 result = self._query_vlm(OBSTACLE_DETECTION_PROMPT, frame)
                 with self._lock:
                     self.latest["obstacle"] = result
+                    self._has_result = True
             except Exception as e:
                 print(f"[Obstacle perception error] {e}")
             time.sleep(0.5)
@@ -80,3 +89,8 @@ class PerceptionLoop:
     def get(self):
         with self._lock:
             return dict(self.latest)
+
+    def query_once(self, prompt) -> dict:
+        """Synchronous one-shot VLM query — captures a fresh frame and returns parsed JSON."""
+        image_b64 = self._capture_frame_base64()
+        return self._query_vlm(prompt, image_b64)

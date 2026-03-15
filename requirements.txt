@@ -4,6 +4,7 @@ openai
 requests
 sounddevice
 numpy
+python-dotenv
 
 # Audio / TTS
 SpeechRecognition
