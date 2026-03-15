@@ -17,7 +17,10 @@ class LocomotionController:
         if mode == "sim":
             self.model = model
             self.data  = data
-            self._torso_id = None
+            self._x   = 0.0
+            self._y   = 0.0
+            self._yaw = 0.0
+            self._z0  = None
             self._load_policy_or_pd()
         else:
             self._init_real_sdk()
@@ -34,12 +37,6 @@ class LocomotionController:
             except Exception as e:
                 print(f"[LOCO] Failed to load checkpoint ({e}), falling back to PD controller.")
         print("[LOCO] Using PD position controller (no checkpoint).")
-        # Find torso body index for external force application
-        try:
-            import mujoco
-            self._torso_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "torso_link")
-        except Exception:
-            self._torso_id = 1  # fallback
 
     def _init_real_sdk(self):
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_
@@ -60,19 +57,42 @@ class LocomotionController:
             self._pd_step(vx, vy, omega)
 
     def _pd_step(self, vx, vy, omega):
-        import mujoco
-        # Standing pose: all joints at zero
+        # PD on joints (standing pose)
         target = np.zeros(self.model.nu)
-        qpos = self.data.qpos[7:]   # skip free-joint (pos + quat)
+        qpos = self.data.qpos[7:]
         qvel = self.data.qvel[6:]
         n = min(len(target), len(_KP))
         torques = _KP[:n] * (target[:n] - qpos[:n]) - _KD[:n] * qvel[:n]
         self.data.ctrl[:n] = torques
 
-        # Apply external forces on torso: forward force + z-torque for turning
-        if self._torso_id is not None:
-            self.data.xfrc_applied[self._torso_id, 0] = vx * 30.0
-            self.data.xfrc_applied[self._torso_id, 5] = omega * 10.0
+        # Capture initial standing height once
+        if self._z0 is None:
+            self._z0 = float(self.data.qpos[2])
+
+        # Integrate desired pose (dead reckoning)
+        dt = self.model.opt.timestep
+        self._yaw += omega * dt
+        self._x   += vx * np.cos(self._yaw) * dt
+        self._y   += vx * np.sin(self._yaw) * dt
+
+        # Apply kinematic override: position + upright orientation
+        cy, sy = np.cos(self._yaw / 2), np.sin(self._yaw / 2)
+        self.data.qpos[0] = self._x
+        self.data.qpos[1] = self._y
+        self.data.qpos[2] = self._z0
+        self.data.qpos[3] = cy   # w
+        self.data.qpos[4] = 0.0  # x
+        self.data.qpos[5] = 0.0  # y
+        self.data.qpos[6] = sy   # z
+
+        # Set base velocity so physics integrates from the right state
+        self.data.qvel[0] = vx * np.cos(self._yaw)
+        self.data.qvel[1] = vx * np.sin(self._yaw)
+        self.data.qvel[2] = 0.0
+        self.data.qvel[3:6] = 0.0
+
+        # Clear any residual external forces
+        self.data.xfrc_applied[:] = 0.0
 
     def _policy_step(self, vx, vy, omega):
         import torch

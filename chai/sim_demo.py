@@ -31,7 +31,7 @@ from voice.phrases import OBSTACLE_WARNINGS, RESUME_EN
 
 SCENE_XML = os.path.join(
     os.path.dirname(__file__),
-    "../unitree_mujoco/unitree_robots/g1/scene.xml"
+    "../unitree_mujoco/unitree_robots/g1/chai_demo_scene.xml"
 )
 
 from enum import Enum, auto
@@ -112,9 +112,9 @@ def _run_headless(model, data, tick_fn):
     renderer = mujoco.Renderer(model, height=480, width=640)
     cam = mujoco.MjvCamera()
     mujoco.mjv_defaultFreeCamera(model, cam)
-    cam.distance  = 4.0
-    cam.azimuth   = 180.0
-    cam.elevation = -20.0
+    cam.distance  = 7.0
+    cam.azimuth   = 135.0
+    cam.elevation = -25.0
 
     frame_every = 10   # render every N physics steps for speed
     step = 0
@@ -196,9 +196,9 @@ def run_demo():
     try:
         with mujoco.viewer.launch_passive(model, data) as viewer:
             viewer.cam.type      = mujoco.mjtCamera.mjCAMERA_FREE
-            viewer.cam.distance  = 4.0
-            viewer.cam.azimuth   = 180
-            viewer.cam.elevation = -20
+            viewer.cam.distance  = 7.0
+            viewer.cam.azimuth   = 135
+            viewer.cam.elevation = -25
 
             while viewer.is_running():
                 t = time.time()
