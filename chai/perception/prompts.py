@@ -18,7 +18,7 @@ Respond ONLY with valid JSON, no explanation:
   "obstacle": true/false,
   "type": "chair | box | bag | other | null",
   "side": "left | center | right | null",
-  "distance": "near (<0.5m) | medium (0.5-1.5m) | far (>1.5m) | null"
+  "distance": "near (<1.0m) | medium (1.0-2.0m) | far (>2.0m) | null"
 }
 """
 

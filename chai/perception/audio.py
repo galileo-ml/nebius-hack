@@ -2,7 +2,7 @@ import speech_recognition as sr
 
 
 class AudioInput:
-    def __init__(self, language="hi-IN", timeout=5):
+    def __init__(self, language="en-US", timeout=5):
         self.recognizer = sr.Recognizer()
         self.language = language
         self.timeout = timeout

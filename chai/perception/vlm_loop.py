@@ -3,6 +3,8 @@ import base64
 import time
 import json
 import io
+import os
+import shutil
 
 import numpy as np
 from PIL import Image
@@ -22,6 +24,7 @@ class PerceptionLoop:
         self._lock        = threading.Lock()
         self._running     = False
         self._has_result  = False
+        shutil.rmtree("vlm_images", ignore_errors=True)
 
     def _capture_frame_base64(self):
         """Get current camera frame as base64 string."""
@@ -34,6 +37,14 @@ class PerceptionLoop:
     def _query_vlm(self, prompt, image_b64):
         label = "obstacle" if "obstacle" in prompt[:30].lower() else "human"
         print(f"[VLM] calling {VLM_MODEL} for {label} detection")
+        
+        os.makedirs("vlm_images", exist_ok=True)
+        try:
+            with open(f"vlm_images/vlm_{label}_{int(time.time()*1000)}.jpg", "wb") as f:
+                f.write(base64.b64decode(image_b64))
+        except Exception as e:
+            print(f"[VLM] Error saving image: {e}")
+            
         response = self.client.chat.completions.create(
             model=VLM_MODEL,
             messages=[{
@@ -43,7 +54,7 @@ class PerceptionLoop:
                     {"type": "text", "text": prompt}
                 ]
             }],
-            max_tokens=100
+            max_tokens=256
         )
         raw = response.choices[0].message.content.strip()
         # Strip markdown fences if present

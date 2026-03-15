@@ -42,3 +42,6 @@ checkpoints/*.pth
 *.mp3
 
 world_envs
+
+# VLM debug images
+vlm_images/

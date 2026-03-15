@@ -5,6 +5,7 @@ requests
 sounddevice
 numpy
 python-dotenv
+vlm_images/
 
 # Audio / TTS
 SpeechRecognition

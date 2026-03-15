@@ -54,14 +54,14 @@ def _speak(text):
 
 
 def _move_person(model, data, robot_xy):
-    """Move person_marker toward robot, keeping ~1.5m following distance."""
+    """Move person_marker toward robot, keeping ~2.5m following distance."""
     joint_id  = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "person_marker")
     qpos_addr = model.jnt_qposadr[joint_id]
     dof_addr  = model.jnt_dofadr[joint_id]
     person_xy = data.qpos[qpos_addr : qpos_addr + 2].copy()
     delta = robot_xy - person_xy
     dist  = np.linalg.norm(delta)
-    if dist > 1.5:                            # keep ~1.5m following distance
+    if dist > 2.5:                            # keep ~2.5m following distance
         dt        = model.opt.timestep
         speed     = 0.6                       # m/s
         direction = delta / dist
@@ -275,9 +275,9 @@ def run_demo(world_mesh: bool = False):
             _sweep_applied = True
             print(f"[DEMO] Starting {decision.action}")
         elif decision.action == "walk":
-            robot.loco.send_velocity(vx=decision.vx or 0.35, vy=0, omega=0)
+            robot.loco.send_velocity(vx=decision.vx or 0.20, vy=0, omega=0)
         elif decision.action == "slow":
-            robot.loco.send_velocity(vx=decision.vx or 0.15, vy=0, omega=0)
+            robot.loco.send_velocity(vx=decision.vx or 0.10, vy=0, omega=0)
         elif decision.action == "stop":
             robot.stop()
 

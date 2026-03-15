@@ -20,16 +20,16 @@ SYSTEM_PROMPT = """You are the decision-making brain of a blind-guide robot (Uni
 You walk ahead of a visually impaired user, detect obstacles, clear them with your arm, and narrate the environment.
 
 Action vocabulary:
-  walk         — walk forward at full speed (vx=0.35 m/s). Use when path is clear.
-  slow         — slow forward walk (vx=0.15 m/s). Use when approaching an obstacle.
+  walk         — walk forward at full speed (vx=0.20 m/s). Use when path is clear.
+  slow         — slow forward walk (vx=0.10 m/s). Use when approaching an obstacle.
   stop         — halt completely. Use when obstacle is near or situation is unclear.
   sweep_right  — stop and sweep right arm to clear obstacle. Use when obstacle is directly in front.
   signal_clear — turn to face the human and wave to signal path is clear. Use after clearing an obstacle.
   signal_stop  — turn to face the human and hold up a hand to signal them to stop. Use BEFORE clearing a hazard.
 
 Decision guidelines for obstacles:
-  - If an obstacle is detected far (>0.7m): action=walk or slow (approach it)
-  - If an obstacle is detected near (<=0.7m):
+  - If an obstacle is detected with distance "far" or "medium" (>1.0m): action=walk or slow (approach it)
+  - If an obstacle is detected with distance "near" (<=1.0m):
       Step 1: action=signal_stop (if signal_stop_already_applied is false)
       Step 2: action=sweep_right (if signal_stop is done, but sweep_already_applied is false)
       Step 3: action=signal_clear (if sweep is done, but signal_clear_already_applied is false)
@@ -37,7 +37,7 @@ Decision guidelines for obstacles:
   - ALWAYS check 'robot' context to see if an action is in progress. If action_in_progress != "none", output action=stop so it can finish!
 
 Output ONLY valid JSON with this exact schema:
-{"action": "walk|slow|stop|sweep_left|sweep_right|signal_clear|signal_stop", "vx": 0.35, "speech": "text or null", "reasoning": "brief"}
+{"action": "walk|slow|stop|sweep_left|sweep_right|signal_clear|signal_stop", "vx": 0.20, "speech": "text or null", "reasoning": "brief"}
 """
 
 _STALE_TIMEOUT = 5.0  # seconds before a decision is considered stale
@@ -106,7 +106,7 @@ class RobotAgent:
             )
 
         # Hard safety override: never walk/slow into an obstacle
-        if sim_dist < 0.7 and decision.action in ("walk", "slow"):
+        if sim_dist < 1.0 and decision.action in ("walk", "slow"):
             return AgentDecision(
                 action="stop", vx=0.0, speech=None,
                 reasoning=f"safety override: sim_dist={sim_dist:.2f}m",
@@ -157,23 +157,23 @@ class RobotAgent:
         response = self._client.chat.completions.create(
             model=self._model,
             messages=messages,
-            max_tokens=150,
+            max_tokens=256,
         )
         raw = response.choices[0].message.content.strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
 
+        parsed = json.loads(raw)
+
         # Update history
         self._history.append({"role": "user", "content": user_content})
         self._history.append({"role": "assistant", "content": raw})
-
-        parsed = json.loads(raw)
 
         action = parsed.get("action", "stop")
         if action not in VALID_ACTIONS:
             print(f"[AGENT] Unknown action {action!r} — falling back to stop")
             action = "stop"
 
-        vx = float(parsed.get("vx", 0.35 if action == "walk" else 0.15 if action == "slow" else 0.0))
+        vx = float(parsed.get("vx", 0.20 if action == "walk" else 0.10 if action == "slow" else 0.0))
         speech = parsed.get("speech") or None
         reasoning = parsed.get("reasoning", "")
 

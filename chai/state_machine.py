@@ -8,7 +8,6 @@ class State(Enum):
     HUMAN_DETECTED    = auto()
     GREETING          = auto()
     AWAIT_RESPONSE    = auto()
-    TRANSLATING       = auto()
     GUIDING           = auto()
     OBSTACLE_DETECTED = auto()
     WARNING           = auto()
@@ -17,16 +16,14 @@ class State(Enum):
 
 
 class CHAI:
-    def __init__(self, perception, audio_in, audio_out, translator, robot):
+    def __init__(self, perception, audio_in, audio_out, robot):
         self.perception  = perception
         self.audio_in    = audio_in
         self.audio_out   = audio_out
-        self.translator  = translator
         self.robot       = robot
         self.state       = State.IDLE
         self.warned_obstacles = set()  # tracks obstacles already warned about
 
-        self._hindi_response    = None
         self._current_obstacle  = None
 
     def _obstacle_key(self, obs):
@@ -62,18 +59,7 @@ class CHAI:
         elif self.state == State.AWAIT_RESPONSE:
             spoken = self.audio_in.listen_once()
             if spoken:
-                self._hindi_response = spoken
-                self.state = State.TRANSLATING
-            else:
-                # No response heard — proceed to guiding
-                self.state = State.GUIDING
-
-        # --- TRANSLATING ---
-        elif self.state == State.TRANSLATING:
-            translation  = self.translator.hindi_to_english(self._hindi_response)
-            announcement = f"The person said: {translation}"
-            print(f"[Translation] {announcement}")
-            self.audio_out.speak(announcement, lang="en")
+                print(f"[STT] Response: {spoken}")
             self.state = State.GUIDING
 
         # --- GUIDING ---

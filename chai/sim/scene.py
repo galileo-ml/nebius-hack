@@ -76,8 +76,9 @@ PERSON_MARKER_XML = """    <body name="person_marker" pos="-1.5 0 0">
       <geom type="box" size="0.04 0.035 0.015" pos="0.105 -0.055 1.635" rgba="0.05 0.05 0.05 0.9" contype="0" conaffinity="0"/>
       <!-- sunglasses bridge -->
       <geom type="box" size="0.005 0.015 0.008" pos="0.105 0.0 1.635" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
-      <!-- white cane (in right hand) -->
-      <geom type="capsule" size="0.012 0.58" pos="0.46 -0.18 0.58" euler="0 -30 0" rgba="0.95 0.95 0.95 1" contype="0" conaffinity="0"/>
+      <!-- white cane (in right hand) - top half white, bottom half red -->
+      <geom type="capsule" size="0.012 0.333" pos="0.325 -0.180 0.735" euler="0 137.437 0" rgba="0.95 0.95 0.95 1" contype="0" conaffinity="0"/>
+      <geom type="capsule" size="0.012 0.333" pos="0.775 -0.180 0.245" euler="0 137.437 0" rgba="0.8 0.1 0.1 1" contype="0" conaffinity="0"/>
     </body>"""
 
 
@@ -92,15 +93,15 @@ def _glb_to_obj(glb_path: str) -> str:
     if not os.path.exists(obj_path):
         import trimesh
         scene = trimesh.load(glb_path, force="scene")
-        combined = trimesh.util.concatenate(list(scene.geometry.values()))
+        combined = scene.to_geometry()
         combined.export(obj_path)
         print(f"[SCENE] Converted {glb_path} → {obj_path}")
     return obj_path
 
 
-def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: float = 0.1) -> str:
+def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: float = 1.0) -> str:
     """
-    Inject the pre-generated World Labs GLB mesh as a static collision body.
+    Inject the pre-generated World Labs GLB mesh as a static visual body.
 
     Set CHAI_WORLD_MESH=1 to enable; off by default.
     """
@@ -108,10 +109,18 @@ def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: fl
     mesh_path = _glb_to_obj(glb_path)
     s = f"{scale} {scale} {scale}"
     asset_xml = f'  <mesh name="world_mesh" file="{mesh_path}" scale="{s}"/>'
+    # euler="90 0 0": rotates GLB Y-up → MuJoCo Z-up (R_x(90°): y→z, z→-y)
+    # pos="0 0 2.174": lifts mesh so its floor (at Y=-2.174 in GLB world space) lands at Z=0
+    # contype/conaffinity=0: visual-only; robot walks on invisible flat collision floor
     body_xml = (
-        '  <body name="marble_world" pos="0 0 0">\n'
-        '    <geom mesh="world_mesh" type="mesh" contype="1" conaffinity="1"/>\n'
+        '  <body name="marble_world" pos="0 0 2.174" euler="90 0 0">\n'
+        '    <geom mesh="world_mesh" type="mesh" contype="0" conaffinity="0"/>\n'
         '  </body>'
+    )
+    # Hide the default checker floor visually (keep it as invisible collision plane)
+    xml_string = xml_string.replace(
+        'material="groundplane"',
+        'rgba="0 0 0 0"'
     )
 
     if "<asset>" in xml_string:
@@ -135,7 +144,7 @@ def patch_scene_xml(source_path: str) -> str:
         # Already patched
         return source_path
 
-    injection = f"\n{CHAIR_XML}\n{PERSON_MARKER_XML}\n{CAMERA_XML}\n"
+    injection = f"\n{CHAIR_XML}\n{PERSON_MARKER_XML}\n"
     xml = xml.replace("</worldbody>", injection + "</worldbody>")
 
     tmp = tempfile.NamedTemporaryFile(
