@@ -120,23 +120,21 @@ def generate_wall_colliders(bounds: dict) -> str:
     After euler="90 0 0": GLB X → MuJoCo X, GLB Y → MuJoCo Z, GLB Z → MuJoCo -Y.
     """
     half_x = (bounds["xmax"] - bounds["xmin"]) / 2
-    cx     = (bounds["xmax"] + bounds["xmin"]) / 2
     half_z = (bounds["zmax"] - bounds["zmin"]) / 2
-    cz_neg = -((bounds["zmax"] + bounds["zmin"]) / 2)
     H      = bounds["ymax"] - bounds["ymin"]
     T = 0.4
 
     walls = [
         f'<geom name="wall_n" type="box" size="{half_x:.3f} {T} {H/2:.3f}" '
-        f'pos="{cx:.3f} {cz_neg - half_z - T:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+        f'pos="0 {-half_z - T:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
         f'<geom name="wall_s" type="box" size="{half_x:.3f} {T} {H/2:.3f}" '
-        f'pos="{cx:.3f} {cz_neg + half_z + T:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+        f'pos="0 {half_z + T:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
         f'<geom name="wall_e" type="box" size="{T} {half_z:.3f} {H/2:.3f}" '
-        f'pos="{cx + half_x + T:.3f} {cz_neg:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+        f'pos="{half_x + T:.3f} 0 {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
         f'<geom name="wall_w" type="box" size="{T} {half_z:.3f} {H/2:.3f}" '
-        f'pos="{cx - half_x - T:.3f} {cz_neg:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+        f'pos="{-half_x - T:.3f} 0 {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
         f'<geom name="ceiling" type="box" size="{half_x:.3f} {half_z:.3f} {T}" '
-        f'pos="{cx:.3f} {cz_neg:.3f} {H + T:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+        f'pos="0 0 {H + T:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
     ]
     return "\n  ".join(walls)
 
@@ -217,8 +215,10 @@ def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: fl
     # euler="90 0 0": rotates GLB Y-up → MuJoCo Z-up (R_x(90°): y→z, z→-y)
     # pos offset lifts mesh so its floor lands at Z=0
     # contype/conaffinity=0: visual-only; robot walks on invisible flat collision floor
+    cx_glb = (bounds["xmax"] + bounds["xmin"]) / 2
+    cz_glb = (bounds["zmax"] + bounds["zmin"]) / 2
     body_xml = (
-        f'  <body name="marble_world" pos="0 0 {offset:.4f}" euler="90 0 0">\n'
+        f'  <body name="marble_world" pos="{-cx_glb:.4f} {cz_glb:.4f} {offset:.4f}" euler="90 0 0">\n'
         f'    <geom mesh="world_mesh" type="mesh" contype="0" conaffinity="0"/>\n'
         f'  </body>'
     )

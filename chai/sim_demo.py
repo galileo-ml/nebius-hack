@@ -44,13 +44,8 @@ SCENE_XML = os.path.join(
 
 
 def _speak(text):
-    """Print announcement; optionally use say on macOS if available."""
+    """Print announcement (audio disabled)."""
     print(f"[CHAI] {text}")
-    try:
-        import subprocess
-        subprocess.Popen(["say", text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except Exception:
-        pass
 
 
 def _move_person(model, data, robot_xy):
@@ -328,7 +323,7 @@ def run_demo(world_mesh: bool = False):
     print("[DEMO] Opening MuJoCo viewer... close the window to exit.")
     try:
         camera_renderer = mujoco.Renderer(model, height=480, width=640)
-        with mujoco.viewer.launch_passive(model, data, width=1280, height=720) as viewer:
+        with mujoco.viewer.launch_passive(model, data) as viewer:
             viewer.cam.type      = mujoco.mjtCamera.mjCAMERA_FREE
             viewer.cam.distance  = 7.0
             viewer.cam.azimuth   = 135
