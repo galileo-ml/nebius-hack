@@ -1,4 +1,7 @@
 import time
+import threading
+
+import numpy as np
 
 from robot.config import MODE, SIM_CONFIG, REAL_CONFIG
 from robot.locomotion import LocomotionController
@@ -23,7 +26,14 @@ class RobotController:
         obj.data  = data
         obj.loco  = LocomotionController(mode="sim", model=model, data=data)
         obj.arm   = ArmController(obj)
+        obj._frame_lock   = threading.Lock()
+        obj._latest_frame = None
         return obj
+
+    def push_sim_frame(self, frame):
+        """Called by main sim thread after each render. Thread-safe."""
+        with self._frame_lock:
+            self._latest_frame = frame.copy()
 
     def _init_sim(self):
         import mujoco
@@ -43,10 +53,10 @@ class RobotController:
             return self._real_camera_frame()
 
     def _sim_camera_frame(self):
-        import mujoco
-        renderer = mujoco.Renderer(self.model, height=480, width=640)
-        renderer.update_scene(self.data, camera=SIM_CONFIG["camera"])
-        return renderer.render()
+        with self._frame_lock:
+            if self._latest_frame is not None:
+                return self._latest_frame.copy()
+        return np.zeros((480, 640, 3), dtype=np.uint8)
 
     def _real_camera_frame(self):
         """Capture frame from real robot's head camera."""

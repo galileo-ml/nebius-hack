@@ -59,24 +59,38 @@ class LocomotionController:
     def _pd_step(self, vx, vy, omega):
         target = np.zeros(self.model.nu)
 
+        # Standing posture constants
+        HIP_PITCH_BIAS = 0.20   # thighs angled forward at rest (rad)
+        KNEE_BIAS      = 0.35   # constant knee bend for compliance (rad)
+        ANKLE_BIAS     = -0.20  # ankle compensates for knee bend (rad)
+
         if vx > 0.01 and self.policy is None:
-            t = self.data.time
-            freq = 1.5
-            amp = min(0.4, vx * 1.0)
+            t     = self.data.time
+            freq  = 1.5
+            amp   = min(0.45, vx * 1.2)
             phase = 2 * np.pi * freq * t
-            # L leg forward swing (hip_pitch = index 0, hip_roll = index 1)
-            target[0]  = -amp * np.sin(phase)                   # L hip_pitch
-            target[1]  =  0.06 * np.sin(phase)                  # L hip_roll (lateral sway)
-            target[3]  =  amp * max(0, np.sin(phase))           # L knee
-            target[4]  = -amp * 0.5 * np.sin(phase)            # L ankle
-            # R leg forward swing (hip_pitch = index 6, hip_roll = index 7)
-            target[6]  = -amp * np.sin(phase + np.pi)           # R hip_pitch
-            target[7]  = -0.06 * np.sin(phase)                  # R hip_roll (lateral sway, mirror)
-            target[9]  =  amp * max(0, np.sin(phase + np.pi))  # R knee
-            target[10] = -amp * 0.5 * np.sin(phase + np.pi)    # R ankle
-            # Arm swing (opposite to ipsilateral leg)
-            target[15] =  0.3 * np.sin(phase + np.pi)          # L shoulder_pitch
-            target[22] =  0.3 * np.sin(phase)                  # R shoulder_pitch
+
+            # L leg: forward swing when sin(phase) > 0
+            target[0]  =  HIP_PITCH_BIAS + amp * np.sin(phase)              # L hip_pitch
+            target[1]  =  0.08 * np.sin(phase)                              # L hip_roll (lateral sway)
+            target[3]  =  KNEE_BIAS + amp * 0.6 * max(0, np.sin(phase))     # L knee lifts during forward swing
+            target[4]  =  ANKLE_BIAS - amp * 0.4 * np.sin(phase)            # L ankle
+
+            # R leg: opposite phase
+            target[6]  =  HIP_PITCH_BIAS + amp * np.sin(phase + np.pi)      # R hip_pitch
+            target[7]  = -0.08 * np.sin(phase)                              # R hip_roll (mirror)
+            target[9]  =  KNEE_BIAS + amp * 0.6 * max(0, np.sin(phase + np.pi))  # R knee
+            target[10] =  ANKLE_BIAS - amp * 0.4 * np.sin(phase + np.pi)   # R ankle
+
+            # Arm swing unchanged
+            target[15] =  0.3 * np.sin(phase + np.pi)   # L shoulder_pitch
+            target[22] =  0.3 * np.sin(phase)            # R shoulder_pitch
+
+        else:
+            # Standing still — maintain posture so legs don't collapse to 0
+            target[0]  = HIP_PITCH_BIAS;  target[6]  = HIP_PITCH_BIAS
+            target[3]  = KNEE_BIAS;       target[9]  = KNEE_BIAS
+            target[4]  = ANKLE_BIAS;      target[10] = ANKLE_BIAS
 
         qpos = self.data.qpos[7:]
         qvel = self.data.qvel[6:]
