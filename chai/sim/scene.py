@@ -77,7 +77,7 @@ PERSON_MARKER_XML = """    <body name="person_marker" pos="-1.5 0 0">
       <!-- sunglasses bridge -->
       <geom type="box" size="0.005 0.015 0.008" pos="0.105 0.0 1.635" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
       <!-- white cane (in right hand) -->
-      <geom type="capsule" size="0.012 0.58" pos="0.51 -0.18 0.48" euler="0 30 0" rgba="0.95 0.95 0.95 1" contype="0" conaffinity="0"/>
+      <geom type="capsule" size="0.012 0.58" pos="0.46 -0.18 0.58" euler="0 -30 0" rgba="0.95 0.95 0.95 1" contype="0" conaffinity="0"/>
     </body>"""
 
 

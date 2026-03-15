@@ -181,14 +181,15 @@ def run_demo(world_mesh: bool = False):
     sim_step        = 0
     _sweep_start    = None
     _sweep_action   = None
-    _kick_applied   = False
-    _kick_start     = None
+    _sweep_applied  = False
     _signal_start   = None
+    _signal_applied = False
     _signal_stop_start = None
+    _signal_stop_applied = False
     _last_speech_ts = [0.0]   # list so nonlocal write works in nested fn
 
     def tick_fn():
-        nonlocal sim_step, _sweep_start, _sweep_action, _kick_applied, _kick_start, _signal_start, _signal_stop_start
+        nonlocal sim_step, _sweep_start, _sweep_action, _sweep_applied, _signal_start, _signal_applied, _signal_stop_start, _signal_stop_applied
 
         # 1. Sim geometry (ground truth, never stale)
         sim_dist = compute_chair_distance(model, data)
@@ -198,8 +199,14 @@ def run_demo(world_mesh: bool = False):
             percept = perception.get()
             robot_context = {
                 "sim_dist_to_obstacle_m": round(sim_dist, 2),
-                "sweep_in_progress": _sweep_start is not None,
-                "sweep_elapsed_s": round(time.time() - _sweep_start, 2) if _sweep_start else 0.0,
+                "action_in_progress": (
+                    "sweep" if _sweep_start else 
+                    "signal_stop" if _signal_stop_start else 
+                    "signal_clear" if _signal_start else "none"
+                ),
+                "signal_stop_already_applied": _signal_stop_applied,
+                "sweep_already_applied": _sweep_applied,
+                "signal_clear_already_applied": _signal_applied,
             }
             agent.update_perception(percept, robot_context)
 
@@ -218,6 +225,15 @@ def run_demo(world_mesh: bool = False):
                 robot.arm.clear_left_tick(elapsed)
             else:
                 robot.arm.clear_right_tick(elapsed)
+                # Artificially push chair away during right sweep so it reliably clears
+                if 0.9 <= elapsed <= 1.0:
+                    try:
+                        chair_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "chair")
+                        chair_dof = model.jnt_dofadr[chair_jid]
+                        data.qvel[chair_dof:chair_dof+3]   = [2.0, -5.0, 2.0]
+                        data.qvel[chair_dof+3:chair_dof+6] = [1.0, 1.0, 1.0]
+                    except Exception:
+                        pass
             if elapsed >= 2.0:
                 print("[DEMO] Sweep complete")
                 _sweep_start = None
@@ -242,42 +258,28 @@ def run_demo(world_mesh: bool = False):
             else:
                 _signal_stop_start = None
                 print("[DEMO] Signal stop complete")
-        elif _kick_start is not None:
-            elapsed = time.time() - _kick_start
-            robot.stop()                         # base stays still
-            robot.loco.kick_tick(elapsed)        # override right leg after stop
-            if 0.28 <= elapsed <= 0.38:          # at kick peak, fly the chair
-                chair_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "chair")
-                chair_dof = model.jnt_dofadr[chair_jid]
-                data.qvel[chair_dof:chair_dof+3]   = [0.0, 7.0, 4.0]
-                data.qvel[chair_dof+3:chair_dof+6] = [2.0, 0.0, 1.0]
-            if elapsed >= 0.8:
-                _kick_start = None
-                print("[DEMO] Kick complete")
-        elif decision.action == "kick_chair" and not _kick_applied:
-            robot.stop()
-            _kick_start   = time.time()
-            _kick_applied = True
-            print("[DEMO] Starting kick")
-        elif decision.action == "signal_clear" and _signal_start is None:
+        elif decision.action == "signal_clear" and not _signal_applied:
             robot.stop()
             _signal_start = time.time()
+            _signal_applied = True
             print("[DEMO] Signaling path clear to human")
-        elif decision.action == "signal_stop" and _signal_stop_start is None:
+        elif decision.action == "signal_stop" and not _signal_stop_applied:
             robot.stop()
             _signal_stop_start = time.time()
+            _signal_stop_applied = True
             print("[DEMO] Signaling stop to human")
+        elif decision.action in ("sweep_left", "sweep_right") and not _sweep_applied:
+            robot.stop()
+            _sweep_start = time.time()
+            _sweep_action = decision.action
+            _sweep_applied = True
+            print(f"[DEMO] Starting {decision.action}")
         elif decision.action == "walk":
             robot.loco.send_velocity(vx=decision.vx or 0.35, vy=0, omega=0)
         elif decision.action == "slow":
             robot.loco.send_velocity(vx=decision.vx or 0.15, vy=0, omega=0)
         elif decision.action == "stop":
             robot.stop()
-        elif decision.action in ("sweep_left", "sweep_right"):
-            robot.stop()
-            _sweep_start = time.time()
-            _sweep_action = decision.action
-            print(f"[DEMO] Starting {decision.action}")
 
         # 6. Move person (always follows robot)
         _move_person(model, data, data.qpos[0:2].copy())

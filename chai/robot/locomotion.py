@@ -60,9 +60,9 @@ class LocomotionController:
         target = np.zeros(self.model.nu)
 
         # Standing posture constants
-        HIP_PITCH_BIAS = 0.50   # thighs angled forward at rest (rad)
-        KNEE_BIAS      = 0.35   # constant knee bend for compliance (rad)
-        ANKLE_BIAS     = -0.20  # ankle compensates for knee bend (rad)
+        HIP_PITCH_BIAS = 0.0    # thighs angled forward at rest (rad)
+        KNEE_BIAS      = 0.0    # constant knee bend for compliance (rad)
+        ANKLE_BIAS     = 0.0    # ankle compensates for knee bend (rad)
 
         if vx > 0.01 and self.policy is None:
             t     = self.data.time
@@ -172,27 +172,6 @@ class LocomotionController:
         gy = 2 * (y * z + w * x)
         gz = 1 - 2 * (x * x + y * y)
         return np.array([gx, gy, gz])
-
-    def kick_tick(self, elapsed, duration=0.8):
-        """Non-blocking right leg kick. Call each tick AFTER send_velocity to override right leg."""
-        waypoints = [
-            np.array([0.50, 0.0, 0.0, 0.35, -0.20, 0.0]),  # standing
-            np.array([1.20, 0.0, 0.0, 0.80, -0.10, 0.0]),  # wind-up (pull back, bend knee)
-            np.array([-0.80, 0.0, 0.0, 0.00,  0.00, 0.0]),  # kick (thrust forward, extend)
-            np.array([0.50, 0.0, 0.0, 0.35, -0.20, 0.0]),  # return to standing
-        ]
-        RIGHT_LEG  = list(range(6, 12))
-        n_segments = len(waypoints) - 1
-        seg_dur    = duration / n_segments
-        seg_idx    = min(int(elapsed / seg_dur), n_segments - 1)
-        alpha      = float(np.clip((elapsed - seg_idx * seg_dur) / seg_dur, 0.0, 1.0))
-        # Smoothstep interpolation for more natural movement
-        alpha      = alpha * alpha * (3 - 2 * alpha)
-        target     = (1 - alpha) * waypoints[seg_idx] + alpha * waypoints[seg_idx + 1]
-        qpos_j = self.data.qpos[7:]
-        qvel_j = self.data.qvel[6:]
-        for i, j in enumerate(RIGHT_LEG):
-            self.data.ctrl[j] = _KP[j] * (target[i] - qpos_j[j]) - _KD[j] * qvel_j[j]
 
     def _real_velocity_cmd(self, vx, vy, omega):
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_
