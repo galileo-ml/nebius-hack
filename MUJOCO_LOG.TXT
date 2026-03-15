@@ -1,0 +1,6 @@
+Sun Mar 15 15:23:18 2026
+WARNING: Could not find decoder for resource '/Users/cjache/repos/nebius-hack/world_envs/event_collider.glb'
+
+Sun Mar 15 15:23:22 2026
+WARNING: Could not find decoder for resource '/Users/cjache/repos/nebius-hack/world_envs/event_collider.glb'
+
