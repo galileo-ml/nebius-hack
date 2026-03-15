@@ -1,0 +1,24 @@
+# Core
+mujoco
+openai
+requests
+sounddevice
+numpy
+
+# Audio / TTS
+SpeechRecognition
+gTTS
+playsound
+pydub
+
+# Sim
+mujoco-python-viewer
+
+# ML (locomotion policy)
+torch
+
+# Image processing
+Pillow
+
+# Robot SDK (real hardware only)
+# unitree-sdk2py
