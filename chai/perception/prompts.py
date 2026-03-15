@@ -19,7 +19,7 @@ Respond ONLY with valid JSON, no explanation:
   "type": "chair | box | bag | other | null",
   "side": "left | center | right | null",
   "distance": "near (<1.0m) | medium (1.0-2.0m) | far (>2.0m) | null",
-  "movable": true/false
+  "can_kick_or_shove": true/false
 }
 """
 
