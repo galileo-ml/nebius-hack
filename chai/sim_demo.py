@@ -2,8 +2,9 @@
 Standalone sim demo for CHAI — no API key, no microphone required.
 
 Usage (from repo root):
-    cd chai && mjpython sim_demo.py        # macOS (required)
-    cd chai && python   sim_demo.py        # Linux
+    source venv/bin/activate               # activate project venv once
+    cd chai && python sim_demo.py          # all platforms (headless OpenCV window)
+    cd chai && mjpython sim_demo.py        # macOS interactive viewer (needs: brew install glfw)
 
 What you'll see:
   1. MuJoCo viewer opens with G1 standing, person_marker ~3m ahead
@@ -15,20 +16,6 @@ What you'll see:
 import sys
 import os
 import time
-
-# On macOS, mujoco.viewer.launch_passive requires mjpython.
-# Auto-relaunch under mjpython if we're running under regular python.
-if sys.platform == "darwin" and "mjpython" not in sys.executable:
-    import shutil, subprocess
-    mjpython = shutil.which("mjpython")
-    if mjpython:
-        print(f"[DEMO] Re-launching under mjpython: {mjpython}")
-        os.execv(mjpython, [mjpython] + sys.argv)
-    else:
-        print("ERROR: On macOS, run this script with mjpython (not python).")
-        print("  mjpython comes with the mujoco pip package:")
-        print("  pip install mujoco   # then use 'mjpython' instead of 'python'")
-        sys.exit(1)
 
 # Allow imports from the chai package without installing
 sys.path.insert(0, os.path.dirname(__file__))
@@ -109,6 +96,43 @@ def _move_person(model, data, step):
     # Leave z and quaternion unchanged (upright cylinder)
 
 
+def _pace(model):
+    """Sleep to maintain real-time pacing."""
+    pass  # caller handles timing
+
+
+def _run_headless(model, data, tick_fn):
+    """Headless render loop using mujoco.Renderer + OpenCV."""
+    try:
+        import cv2
+    except ImportError:
+        print("[DEMO] pip install opencv-python  for headless display; running blind.")
+        cv2 = None
+
+    renderer = mujoco.Renderer(model, height=480, width=640)
+    cam = mujoco.MjvCamera()
+    mujoco.mjv_defaultFreeCamera(model, cam)
+    cam.distance  = 4.0
+    cam.azimuth   = 180.0
+    cam.elevation = -20.0
+
+    frame_every = 10   # render every N physics steps for speed
+    step = 0
+    while True:
+        tick_fn()
+        mujoco.mj_step(model, data)
+        if cv2 and step % frame_every == 0:
+            renderer.update_scene(data, cam)
+            rgb = renderer.render()
+            bgr = rgb[:, :, ::-1]   # RGB→BGR for OpenCV
+            cv2.imshow("CHAI sim", bgr)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        step += 1
+    if cv2:
+        cv2.destroyAllWindows()
+
+
 def run_demo():
     # --- 1. Patch scene XML ---
     patched_xml = patch_scene_xml(SCENE_XML)
@@ -124,65 +148,71 @@ def run_demo():
     # --- 4. Perception stub ---
     perception = SimPerception(model, data)
 
-    # --- 5. Launch viewer ---
+    # --- 5. Set up state machine ---
     state    = State.FOLLOWING
     warned   = False
-    arm_end  = 0.0
     sim_step = 0
 
+    def tick_fn():
+        nonlocal state, warned, sim_step
+        t = time.time()
+
+        percept  = perception.get()
+        obstacle = percept["obstacle"]
+
+        # --- State machine tick ---
+        if state == State.FOLLOWING:
+            _follow_person(robot, data)
+            if obstacle.get("obstacle") and not warned:
+                warned = True
+                state  = State.OBSTACLE_DETECTED
+
+        elif state == State.OBSTACLE_DETECTED:
+            robot.stop()
+            state = State.WARNING
+
+        elif state == State.WARNING:
+            side    = obstacle.get("side", "center")
+            warning = OBSTACLE_WARNINGS["en"].get(side, OBSTACLE_WARNINGS["en"]["center"])
+            _speak(warning)
+            state = State.CLEARING
+
+        elif state == State.CLEARING:
+            _speak("Sweeping obstacle...")
+            robot.arm.clear_right(duration=2.0)
+            state = State.RESUMING
+
+        elif state == State.RESUMING:
+            _speak(RESUME_EN)
+            warned = False
+            state  = State.FOLLOWING
+
+        # --- Move person along arc ---
+        _move_person(model, data, sim_step)
+        sim_step += 1
+
+    # --- 6. Launch viewer (interactive or headless fallback) ---
     print("[DEMO] Opening MuJoCo viewer... close the window to exit.")
-    with mujoco.viewer.launch_passive(model, data) as viewer:
-        viewer.cam.type      = mujoco.mjtCamera.mjCAMERA_FREE
-        viewer.cam.distance  = 4.0
-        viewer.cam.azimuth   = 180
-        viewer.cam.elevation = -20
+    try:
+        with mujoco.viewer.launch_passive(model, data) as viewer:
+            viewer.cam.type      = mujoco.mjtCamera.mjCAMERA_FREE
+            viewer.cam.distance  = 4.0
+            viewer.cam.azimuth   = 180
+            viewer.cam.elevation = -20
 
-        while viewer.is_running():
-            t = time.time()
-
-            percept  = perception.get()
-            obstacle = percept["obstacle"]
-
-            # --- State machine tick ---
-            if state == State.FOLLOWING:
-                _follow_person(robot, data)
-                if obstacle.get("obstacle") and not warned:
-                    warned = True
-                    state  = State.OBSTACLE_DETECTED
-
-            elif state == State.OBSTACLE_DETECTED:
-                robot.stop()
-                state = State.WARNING
-
-            elif state == State.WARNING:
-                side    = obstacle.get("side", "center")
-                warning = OBSTACLE_WARNINGS["en"].get(side, OBSTACLE_WARNINGS["en"]["center"])
-                _speak(warning)
-                state = State.CLEARING
-
-            elif state == State.CLEARING:
-                _speak("Sweeping obstacle...")
-                robot.arm.clear_right(duration=2.0)
-                state = State.RESUMING
-
-            elif state == State.RESUMING:
-                _speak(RESUME_EN)
-                warned = False
-                state  = State.FOLLOWING
-
-            # --- Move person along arc ---
-            _move_person(model, data, sim_step)
-            sim_step += 1
-
-            # --- Step physics ---
-            mujoco.mj_step(model, data)
-            viewer.sync()
-
-            # Real-time pacing at ~50 Hz
-            elapsed = time.time() - t
-            sleep_t = model.opt.timestep - elapsed
-            if sleep_t > 0:
-                time.sleep(sleep_t)
+            while viewer.is_running():
+                t = time.time()
+                tick_fn()
+                mujoco.mj_step(model, data)
+                viewer.sync()
+                elapsed = time.time() - t
+                sleep_t = model.opt.timestep - elapsed
+                if sleep_t > 0:
+                    time.sleep(sleep_t)
+    except RuntimeError:
+        print("[DEMO] Interactive viewer unavailable — falling back to headless (OpenCV).")
+        print("[DEMO] For interactive viewer on macOS: brew install glfw && mjpython sim_demo.py")
+        _run_headless(model, data, tick_fn)
 
 
 if __name__ == "__main__":

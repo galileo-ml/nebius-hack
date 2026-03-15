@@ -112,6 +112,7 @@ REAL_CONFIG = {
 
 ```bash
 cd chai && python sim_demo.py
+# macOS interactive viewer: source venv/bin/activate && brew install glfw && mjpython sim_demo.py
 ```
 
 ### Full system (requires API key + mic)
@@ -155,7 +156,8 @@ nebius-hack/
 ├── unitree_mujoco/          # git submodule — G1 model XMLs
 └── docs/
     ├── RUNNING.md           # step-by-step run guide
-    └── sim_resources.md     # Nebius VM + mjlab/video2robot setup
+    ├── sim_resources.md     # Nebius VM + mjlab/video2robot setup
+    └── tts_research.md      # TTS options considered; why gTTS was chosen
 ```
 
 ---
