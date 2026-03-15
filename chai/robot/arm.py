@@ -35,6 +35,23 @@ class ArmController:
         target = (1 - alpha) * waypoints[seg_idx] + alpha * waypoints[seg_idx + 1]
         self._send_arm_joints(target, self.LEFT_ARM_JOINTS)
 
+    def wave_tick(self, elapsed, duration=3.0):
+        """Non-blocking per-tick wave gesture. Call each physics tick with elapsed wall time."""
+        waypoints = [
+            np.array([ 0.0,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),  # neutral
+            np.array([-1.2,  0.4, 0.0, 0.3, 0.0, 0.0, 0.0]),  # raise arm high
+            np.array([-1.2,  0.1, 0.0, 0.3, 0.0, 0.0, 0.0]),  # wave in
+            np.array([-1.2,  0.5, 0.0, 0.3, 0.0, 0.0, 0.0]),  # wave out
+            np.array([ 0.0,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),  # retract
+        ]
+        n_segments = len(waypoints) - 1
+        seg_dur = duration / n_segments
+        seg_idx = min(int(elapsed / seg_dur), n_segments - 1)
+        alpha = (elapsed - seg_idx * seg_dur) / seg_dur
+        alpha = float(np.clip(alpha, 0.0, 1.0))
+        target = (1 - alpha) * waypoints[seg_idx] + alpha * waypoints[seg_idx + 1]
+        self._send_arm_joints(target, self.LEFT_ARM_JOINTS)
+
     def clear_right(self, duration=2.0):
         """Extend right arm forward, sweep left, retract."""
         print("[ARM] Clearing obstacle on right...")

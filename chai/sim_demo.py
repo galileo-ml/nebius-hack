@@ -169,10 +169,12 @@ def run_demo():
     sim_step        = 0
     _sweep_start    = None
     _sweep_action   = None
+    _kick_applied   = False
+    _signal_start   = None
     _last_speech_ts = [0.0]   # list so nonlocal write works in nested fn
 
     def tick_fn():
-        nonlocal sim_step, _sweep_start, _sweep_action
+        nonlocal sim_step, _sweep_start, _sweep_action, _kick_applied, _signal_start
 
         # 1. Sim geometry (ground truth, never stale)
         sim_dist = compute_chair_distance(model, data)
@@ -195,7 +197,7 @@ def run_demo():
             _speak(decision.speech)
             _last_speech_ts[0] = decision.timestamp
 
-        # 5. Execute action — sweep takes priority once started
+        # 5. Execute action — sweep/signal take priority once started
         if _sweep_start is not None:
             elapsed = time.time() - _sweep_start
             if _sweep_action == "sweep_left":
@@ -206,6 +208,27 @@ def run_demo():
                 print("[DEMO] Sweep complete")
                 _sweep_start = None
                 _sweep_action = None
+        elif _signal_start is not None:
+            elapsed = time.time() - _signal_start
+            if elapsed < 1.5:
+                robot.loco.send_velocity(vx=0, vy=0, omega=-2.0)  # turn to face human
+            elif elapsed < 4.5:
+                robot.stop()
+                robot.arm.wave_tick(elapsed - 1.5, duration=3.0)
+            else:
+                _signal_start = None
+                print("[DEMO] Signal complete")
+        elif decision.action == "kick_chair" and not _kick_applied:
+            chair_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "chair")
+            chair_dof = model.jnt_dofadr[chair_jid]
+            data.qvel[chair_dof:chair_dof+3] = [0.0, 7.0, 4.0]    # fly sideways + upward
+            data.qvel[chair_dof+3:chair_dof+6] = [2.0, 0.0, 1.0]  # spin for drama
+            _kick_applied = True
+            print("[DEMO] KICK! Chair sent flying")
+        elif decision.action == "signal_clear" and _signal_start is None:
+            robot.stop()
+            _signal_start = time.time()
+            print("[DEMO] Signaling path clear to human")
         elif decision.action == "walk":
             robot.loco.send_velocity(vx=decision.vx or 0.35, vy=0, omega=0)
         elif decision.action == "slow":
@@ -219,7 +242,9 @@ def run_demo():
             print(f"[DEMO] Starting {decision.action}")
 
         # 6. Move person (follow robot when moving)
-        _move_person(model, data, sim_step, moving=(decision.action in ("walk", "slow")))
+        _move_person(model, data, sim_step,
+                     moving=(decision.action in ("walk", "slow"))
+                             and _signal_start is None)
         sim_step += 1
 
     # --- 8. Launch viewer (interactive or headless fallback) ---

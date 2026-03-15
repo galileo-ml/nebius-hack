@@ -66,6 +66,14 @@ PERSON_MARKER_XML = """    <body name="person_marker" pos="-1.5 0 0">
       <geom type="capsule" size="0.04 0.18" pos="-0.09 0 0.22" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
       <!-- mass carrier (invisible) -->
       <geom type="sphere" size="0.01" pos="0 0 0.9" rgba="0 0 0 0" mass="60"/>
+      <!-- sunglasses left lens -->
+      <geom type="box" size="0.04 0.035 0.015" pos="0.105 0.055 1.635" rgba="0.05 0.05 0.05 0.9" contype="0" conaffinity="0"/>
+      <!-- sunglasses right lens -->
+      <geom type="box" size="0.04 0.035 0.015" pos="0.105 -0.055 1.635" rgba="0.05 0.05 0.05 0.9" contype="0" conaffinity="0"/>
+      <!-- sunglasses bridge -->
+      <geom type="box" size="0.005 0.015 0.008" pos="0.105 0.0 1.635" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
+      <!-- white cane -->
+      <geom type="capsule" size="0.012 0.58" pos="-0.05 0.22 0.58" euler="-12 -8 0" rgba="0.95 0.95 0.95 1" contype="0" conaffinity="0"/>
     </body>"""
 
 

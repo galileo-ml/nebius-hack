@@ -60,25 +60,27 @@ class LocomotionController:
         target = np.zeros(self.model.nu)
 
         # Standing posture constants
-        HIP_PITCH_BIAS = 0.20   # thighs angled forward at rest (rad)
+        HIP_PITCH_BIAS = 0.25   # thighs angled forward at rest (rad)
         KNEE_BIAS      = 0.35   # constant knee bend for compliance (rad)
         ANKLE_BIAS     = -0.20  # ankle compensates for knee bend (rad)
 
         if vx > 0.01 and self.policy is None:
             t     = self.data.time
             freq  = 1.5
-            amp   = min(0.45, vx * 1.2)
+            amp   = min(0.65, vx * 1.8)
             phase = 2 * np.pi * freq * t
 
             # L leg: forward swing when sin(phase) > 0
             target[0]  =  HIP_PITCH_BIAS + amp * np.sin(phase)              # L hip_pitch
             target[1]  =  0.08 * np.sin(phase)                              # L hip_roll (lateral sway)
+            target[2]  =  0.12 * np.sin(phase)                              # L hip_yaw (cross-step)
             target[3]  =  KNEE_BIAS + amp * 0.6 * max(0, np.sin(phase))     # L knee lifts during forward swing
             target[4]  =  ANKLE_BIAS - amp * 0.4 * np.sin(phase)            # L ankle
 
             # R leg: opposite phase
             target[6]  =  HIP_PITCH_BIAS + amp * np.sin(phase + np.pi)      # R hip_pitch
             target[7]  = -0.08 * np.sin(phase)                              # R hip_roll (mirror)
+            target[8]  =  0.12 * np.sin(phase + np.pi)                      # R hip_yaw (cross-step)
             target[9]  =  KNEE_BIAS + amp * 0.6 * max(0, np.sin(phase + np.pi))  # R knee
             target[10] =  ANKLE_BIAS - amp * 0.4 * np.sin(phase + np.pi)   # R ankle
 
