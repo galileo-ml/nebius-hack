@@ -34,6 +34,7 @@ CHAIR_XML = """    <body name="chair" pos="1.5 0 0.25">
 CAMERA_XML = """    <camera name="front_camera" pos="0 -3 1.5" xyaxes="1 0 0 0 0.5 1"/>"""
 
 PERSON_MARKER_XML = """    <body name="person_marker" pos="3.0 0 0.9">
+      <freejoint/>
       <geom type="cylinder" size="0.2 0.9" rgba="0.2 0.5 0.9 0.5"/>
     </body>"""
 

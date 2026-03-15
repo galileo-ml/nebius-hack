@@ -35,9 +35,18 @@ class SimPerception:
     def _check_human(self, robot_pos):
         try:
             person_pos = self.data.body("person_marker").xpos.copy()
-            dist = float(np.linalg.norm(person_pos[:2] - robot_pos[:2]))
+            dx = person_pos[0] - robot_pos[0]
+            dy = person_pos[1] - robot_pos[1]
+            dist = float(np.linalg.norm([dx, dy]))
+            # Compute robot yaw from pelvis quaternion (w,x,y,z)
+            quat = self.data.body("pelvis").xquat
+            yaw = np.arctan2(2*(quat[0]*quat[3] + quat[1]*quat[2]),
+                             1 - 2*(quat[2]**2 + quat[3]**2))
+            bearing = np.arctan2(dy, dx)
+            angle_error = float(np.arctan2(np.sin(bearing - yaw), np.cos(bearing - yaw)))
             if dist < HUMAN_DETECT_DIST:
-                return {"human": True, "approaching": True, "distance": dist}
+                return {"human": True, "approaching": True, "distance": dist,
+                        "angle_error": angle_error}
         except Exception:
             pass
-        return {"human": False, "approaching": False}
+        return {"human": False, "approaching": False, "angle_error": 0.0}

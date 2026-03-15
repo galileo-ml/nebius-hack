@@ -14,24 +14,43 @@ A real-time companion system for the Unitree G1 humanoid robot: detects approach
 
 ---
 
+## Quick start — sim demo (no API key, no mic)
+
+```bash
+git clone --recurse-submodules https://github.com/your-org/nebius-hack.git
+cd nebius-hack
+pip install mujoco numpy
+cd chai && python sim_demo.py
+```
+
+Opens a MuJoCo viewer: robot walks forward, detects the chair obstacle, sweeps it aside, and resumes.
+See **[docs/RUNNING.md](docs/RUNNING.md)** for full instructions (Mac, Nebius VM, real hardware).
+
+---
+
 ## Prerequisites
 
 | Requirement | Notes |
 |---|---|
 | Python 3.10+ | |
 | MuJoCo | `pip install mujoco` |
-| Microphone | for Hindi speech input |
-| Nebius API key | from [studio.nebius.ai](https://studio.nebius.ai) |
-| unitree_mujoco | model XMLs for sim (see below) |
-| `unitree-sdk2py` | real hardware only (see below) |
+| unitree_mujoco | G1 model XMLs — included as a git submodule |
+| Nebius API key | for `main.py` (VLM + LLM) — not needed for `sim_demo.py` |
+| Microphone | for Hindi speech input — not needed for `sim_demo.py` |
+| `unitree-sdk2py` | real hardware only |
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/your-org/nebius-hack.git
+git clone --recurse-submodules https://github.com/your-org/nebius-hack.git
 cd nebius-hack
+```
+
+If you already cloned without `--recurse-submodules`:
+```bash
+git submodule update --init --recursive
 ```
 
 ```bash
@@ -44,11 +63,6 @@ uv pip install -r requirements.txt
 **For real hardware** — uncomment and install the Unitree SDK:
 ```bash
 pip install unitree-sdk2py
-```
-
-**MuJoCo model files** — the simulator expects the Unitree G1 scene XML at the path configured in `chai/robot/config.py` (default: `unitree_mujoco/unitree_robots/g1/scene.xml`). Clone the model repo alongside this one:
-```bash
-git clone https://github.com/unitreerobotics/unitree_mujoco.git
 ```
 
 ---
@@ -94,30 +108,19 @@ REAL_CONFIG = {
 
 ## Running
 
+### Sim demo (no API key)
+
 ```bash
-cd chai
-python3 main.py
+cd chai && python sim_demo.py
 ```
 
-The system prints `[CHAI] System ready.` once the perception loop has started, then enters the main state-machine loop.
+### Full system (requires API key + mic)
 
----
+```bash
+cd chai && python main.py
+```
 
-## Sim vs real
-
-### Simulation
-
-- `MODE = "sim"` (default)
-- Requires `unitree_mujoco` model files and `mujoco-python-viewer`
-- `chai/sim/scene.py` patches the scene XML to add a chair obstacle (~1.5 m ahead) and a person marker (~3 m ahead) for demo testing
-
-### Real hardware checklist
-
-1. Set `MODE = "real"` in `chai/robot/config.py`
-2. Connect the robot over Ethernet; verify the interface name and IP match `REAL_CONFIG`
-3. Install `unitree-sdk2py`
-4. Power on the G1 and confirm it is in damping / ready state before running
-5. Ensure the robot has clear space in front (≥ 2 m) before the first run
+Prints `[CHAI] System ready.` once the perception loop has started.
 
 ---
 
@@ -126,7 +129,8 @@ The system prints `[CHAI] System ready.` once the perception loop has started, t
 ```
 nebius-hack/
 ├── chai/
-│   ├── main.py              # entry point — wires all components together
+│   ├── sim_demo.py          # standalone demo — no API key, no mic needed
+│   ├── main.py              # full system entry point
 │   ├── state_machine.py     # CHAI state machine (Idle → Guide → Clear …)
 │   ├── perception/
 │   │   ├── vlm_loop.py      # background thread: captures frames, calls VLM
@@ -140,24 +144,43 @@ nebius-hack/
 │   │   ├── config.py        # MODE toggle, API keys, sim/real config
 │   │   ├── controller.py    # RobotController (sim stub or real SDK)
 │   │   ├── arm.py           # arm sweep primitives (clear_left / clear_right)
-│   │   └── locomotion.py    # walk_forward / stop
+│   │   └── locomotion.py    # walk_forward / stop; auto-loads trained checkpoint
 │   ├── sim/
-│   │   └── scene.py         # patches MuJoCo XML with demo obstacles
-│   └── stretch/
-│       └── train_policy.py  # (stretch goal) RL grasp policy training
+│   │   ├── scene.py         # patches MuJoCo XML with demo obstacles
+│   │   └── perception_stub.py  # rule-based obstacle detection (no VLM)
+│   ├── stretch/
+│   │   └── train_policy.py  # RL policy training (feeds mjlab checkpoint)
+│   └── checkpoints/
+│       └── g1_locomotion.pt # trained locomotion policy (place here after training)
+├── unitree_mujoco/          # git submodule — G1 model XMLs
 └── docs/
-    └── CHAI_implementation_plan.md
+    ├── RUNNING.md           # step-by-step run guide
+    └── sim_resources.md     # Nebius VM + mjlab/video2robot setup
 ```
 
 ---
 
-## Stretch goal — RL grasp policy
+## Sim vs real
 
-`chai/stretch/train_policy.py` trains a PPO grasp-and-place policy on Nebius H100 instances using the `playground` library:
+### Simulation
 
-```bash
-pip install mujoco playground
-python chai/stretch/train_policy.py
-```
+- `MODE = "sim"` (default)
+- `sim_demo.py` — runs the full obstacle-clearing demo without any API key
+- `chai/sim/scene.py` patches the scene XML to add a chair obstacle (~1.5 m ahead) and a person marker (~3 m ahead)
+- `chai/sim/perception_stub.py` provides rule-based obstacle detection (no VLM needed)
 
-If the policy transfers cleanly to hardware it can replace the scripted arm sweeps in `state_machine.py`. If not, the scripted sweeps handle the live demo while a simulation video demonstrates the trained policy.
+### Policy training on Nebius VM
+
+Train a locomotion policy on H100 GPUs using the hackathon-provided `mjlab` repo, then drop the checkpoint at `chai/checkpoints/g1_locomotion.pt`. `locomotion.py` auto-loads it at startup; if absent it falls back to the PD controller used in `sim_demo.py`.
+
+See **[docs/sim_resources.md](docs/sim_resources.md)** for VM setup and **[docs/RUNNING.md](docs/RUNNING.md)** for the full training workflow.
+
+### Real hardware checklist
+
+1. Set `MODE = "real"` in `chai/robot/config.py`
+2. Connect the robot over Ethernet; verify the interface name and IP match `REAL_CONFIG`
+3. Install `unitree-sdk2py`
+4. Power on the G1 and confirm it is in damping / ready state before running
+5. Ensure the robot has clear space in front (≥ 2 m) before the first run
+
+Full detail: **[docs/RUNNING.md — Real hardware](docs/RUNNING.md#c-real-hardware)**

@@ -69,12 +69,10 @@ class LocomotionController:
         torques = _KP[:n] * (target[:n] - qpos[:n]) - _KD[:n] * qvel[:n]
         self.data.ctrl[:n] = torques
 
-        # Apply external forward force on torso to produce visible motion
-        if vx != 0.0 and self._torso_id is not None:
-            force_scale = 30.0
-            self.data.xfrc_applied[self._torso_id, 0] = vx * force_scale
-        elif self._torso_id is not None:
-            self.data.xfrc_applied[self._torso_id, 0] = 0.0
+        # Apply external forces on torso: forward force + z-torque for turning
+        if self._torso_id is not None:
+            self.data.xfrc_applied[self._torso_id, 0] = vx * 30.0
+            self.data.xfrc_applied[self._torso_id, 5] = omega * 10.0
 
     def _policy_step(self, vx, vy, omega):
         import torch
