@@ -8,7 +8,7 @@ numpy
 # Audio / TTS
 SpeechRecognition
 gTTS
-playsound
+playsound3
 pydub
 
 # Sim
@@ -21,4 +21,4 @@ torch
 Pillow
 
 # Robot SDK (real hardware only)
-# unitree-sdk2py
+unitree-sdk2py

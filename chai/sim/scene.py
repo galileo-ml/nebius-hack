@@ -27,8 +27,11 @@ import tempfile
 
 
 CHAIR_XML = """    <body name="chair" pos="1.5 0 0.25">
+      <freejoint/>
       <geom type="box" size="0.25 0.25 0.25" rgba="0.6 0.4 0.2 1" mass="5"/>
     </body>"""
+
+CAMERA_XML = """    <camera name="front_camera" pos="0 -3 1.5" xyaxes="1 0 0 0 0.5 1"/>"""
 
 PERSON_MARKER_XML = """    <body name="person_marker" pos="3.0 0 0.9">
       <geom type="cylinder" size="0.2 0.9" rgba="0.2 0.5 0.9 0.5"/>
@@ -47,7 +50,7 @@ def patch_scene_xml(source_path: str) -> str:
         # Already patched
         return source_path
 
-    injection = f"\n{CHAIR_XML}\n{PERSON_MARKER_XML}\n"
+    injection = f"\n{CHAIR_XML}\n{PERSON_MARKER_XML}\n{CAMERA_XML}\n"
     xml = xml.replace("</worldbody>", injection + "</worldbody>")
 
     tmp = tempfile.NamedTemporaryFile(

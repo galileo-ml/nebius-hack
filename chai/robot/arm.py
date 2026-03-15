@@ -8,18 +8,20 @@ class ArmController:
         self.robot = robot
         # G1 right arm joints (7 DOF): shoulder_pitch, shoulder_roll, shoulder_yaw,
         #                               elbow, wrist_roll, wrist_pitch, wrist_yaw
-        self.RIGHT_ARM_JOINTS = list(range(13, 20))  # joint indices in G1 model
-        self.LEFT_ARM_JOINTS  = list(range(20, 27))
+        # G1 29-DOF actuator layout: 0-5 left leg, 6-11 right leg, 12-14 waist,
+        # 15-21 left arm, 22-28 right arm
+        self.RIGHT_ARM_JOINTS = list(range(22, 29))
+        self.LEFT_ARM_JOINTS  = list(range(15, 22))
 
     def clear_right(self, duration=2.0):
         """Extend right arm forward, sweep left, retract."""
         print("[ARM] Clearing obstacle on right...")
-        self._execute_trajectory(self._right_sweep_trajectory(), duration)
+        self._execute_trajectory(self._right_sweep_trajectory(), duration, self.RIGHT_ARM_JOINTS)
 
     def clear_left(self, duration=2.0):
         """Extend left arm forward, sweep right, retract."""
         print("[ARM] Clearing obstacle on left...")
-        self._execute_trajectory(self._left_sweep_trajectory(), duration)
+        self._execute_trajectory(self._left_sweep_trajectory(), duration, self.LEFT_ARM_JOINTS)
 
     def _right_sweep_trajectory(self):
         # Waypoints: [shoulder_pitch, shoulder_roll, shoulder_yaw, elbow, ...]
@@ -39,7 +41,7 @@ class ArmController:
             np.array([ 0.0,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
         ]
 
-    def _execute_trajectory(self, waypoints, total_duration):
+    def _execute_trajectory(self, waypoints, total_duration, joints):
         dt = total_duration / (len(waypoints) - 1)
         for i in range(len(waypoints) - 1):
             start = waypoints[i]
@@ -48,14 +50,16 @@ class ArmController:
             for s in range(steps):
                 alpha = s / steps
                 target = (1 - alpha) * start + alpha * end
-                self._send_arm_joints(target)
+                self._send_arm_joints(target, joints)
                 time.sleep(0.02)
 
-    def _send_arm_joints(self, joint_targets):
+    def _send_arm_joints(self, joint_targets, joints=None):
+        if joints is None:
+            joints = self.RIGHT_ARM_JOINTS
         if self.robot.mode == "sim":
-            for i, j in enumerate(self.RIGHT_ARM_JOINTS):
+            for i, j in enumerate(joints):
                 self.robot.data.ctrl[j] = joint_targets[i]
-            mujoco.mj_step(self.robot.model, self.robot.data)
+            # Physics stepping is handled by the main loop
         else:
             self._real_arm_cmd(joint_targets)
 

@@ -1,5 +1,5 @@
 from gtts import gTTS
-import playsound
+import playsound3 as playsound
 import tempfile
 import os
 

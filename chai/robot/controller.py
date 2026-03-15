@@ -14,6 +14,17 @@ class RobotController:
             self._init_real()
         self.arm = ArmController(self)
 
+    @classmethod
+    def from_model_data(cls, model, data):
+        """Alternate constructor for sim_demo — accepts pre-loaded model/data."""
+        obj = object.__new__(cls)
+        obj.mode  = "sim"
+        obj.model = model
+        obj.data  = data
+        obj.loco  = LocomotionController(mode="sim", model=model, data=data)
+        obj.arm   = ArmController(obj)
+        return obj
+
     def _init_sim(self):
         import mujoco
         self.model = mujoco.MjModel.from_xml_path(SIM_CONFIG["model_path"])
