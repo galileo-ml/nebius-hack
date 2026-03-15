@@ -26,8 +26,8 @@ import shutil
 import tempfile
 
 
-CHAIR_XML = """    <body name="chair" pos="1.8 0 0">
-      <freejoint/>
+CHAIR_XML = """    <body name="chair" pos="3.0 0 0">
+      <freejoint name="chair"/>
       <!-- seat -->
       <geom type="box" size="0.22 0.22 0.03" pos="0 0 0.46" rgba="0.55 0.35 0.15 1" mass="3"/>
       <!-- backrest -->
@@ -44,8 +44,8 @@ CHAIR_XML = """    <body name="chair" pos="1.8 0 0">
 
 CAMERA_XML = """    <camera name="front_camera" pos="0 -3 1.5" xyaxes="1 0 0 0 0.5 1"/>"""
 
-PERSON_MARKER_XML = """    <body name="person_marker" pos="-1.5 0 0">
-      <freejoint/>
+PERSON_MARKER_XML = """    <body name="person_marker" pos="-2.0 0 0">
+      <freejoint name="person_marker"/>
       <!-- head -->
       <geom type="sphere" size="0.11" pos="0 0 1.62" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
       <!-- torso -->
@@ -86,6 +86,105 @@ WORLD_ENV_GLB = os.path.join(
     os.path.dirname(__file__), "../../world_envs/event_collider.glb"
 )
 
+HQ_MESH_GLB = os.path.join(
+    os.path.dirname(__file__), "../../world_envs/high_quality_mesh.glb"
+)
+
+HQ_SPLAT_SPZ = os.path.join(
+    os.path.dirname(__file__), "../../world_envs/high_quality_splat.spz"
+)
+
+
+def detect_glb_bounds(glb_path: str) -> dict:
+    """Auto-detect floor offset and room extents from a GLB file."""
+    import trimesh
+    scene = trimesh.load(glb_path, force="scene")
+    mesh = trimesh.util.concatenate(list(scene.geometry.values()))
+    b = mesh.bounds  # [[xmin,ymin,zmin],[xmax,ymax,zmax]]
+    bounds = {
+        "xmin": float(b[0][0]), "xmax": float(b[1][0]),
+        "ymin": float(b[0][1]), "ymax": float(b[1][1]),
+        "zmin": float(b[0][2]), "zmax": float(b[1][2]),
+        "floor_offset": float(-b[0][1]),
+    }
+    print(f"[SCENE] World bounds: X=[{bounds['xmin']:.3f}, {bounds['xmax']:.3f}] "
+          f"Y=[{bounds['ymin']:.3f}, {bounds['ymax']:.3f}] "
+          f"Z=[{bounds['zmin']:.3f}, {bounds['zmax']:.3f}]")
+    print(f"[SCENE] Floor offset: {bounds['floor_offset']:.3f}m")
+    return bounds
+
+
+def generate_wall_colliders(bounds: dict) -> str:
+    """Generate invisible box wall/ceiling colliders from AABB bounds.
+
+    After euler="90 0 0": GLB X → MuJoCo X, GLB Y → MuJoCo Z, GLB Z → MuJoCo -Y.
+    """
+    half_x = (bounds["xmax"] - bounds["xmin"]) / 2
+    cx     = (bounds["xmax"] + bounds["xmin"]) / 2
+    half_z = (bounds["zmax"] - bounds["zmin"]) / 2
+    cz_neg = -((bounds["zmax"] + bounds["zmin"]) / 2)
+    H      = bounds["ymax"] - bounds["ymin"]
+    T = 0.4
+
+    walls = [
+        f'<geom name="wall_n" type="box" size="{half_x:.3f} {T} {H/2:.3f}" '
+        f'pos="{cx:.3f} {cz_neg - half_z - T:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+        f'<geom name="wall_s" type="box" size="{half_x:.3f} {T} {H/2:.3f}" '
+        f'pos="{cx:.3f} {cz_neg + half_z + T:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+        f'<geom name="wall_e" type="box" size="{T} {half_z:.3f} {H/2:.3f}" '
+        f'pos="{cx + half_x + T:.3f} {cz_neg:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+        f'<geom name="wall_w" type="box" size="{T} {half_z:.3f} {H/2:.3f}" '
+        f'pos="{cx - half_x - T:.3f} {cz_neg:.3f} {H/2:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+        f'<geom name="ceiling" type="box" size="{half_x:.3f} {half_z:.3f} {T}" '
+        f'pos="{cx:.3f} {cz_neg:.3f} {H + T:.3f}" contype="1" conaffinity="1" rgba="0 0 0 0"/>',
+    ]
+    return "\n  ".join(walls)
+
+
+def decode_spz_to_obj(spz_path: str) -> str:
+    """Decompress .spz (gzip'd binary) → extract Gaussian positions → OBJ point cloud."""
+    import gzip
+    import struct
+    import numpy as np
+
+    obj_path = spz_path[:-4] + "_splat.obj"
+    if os.path.exists(obj_path):
+        # Validate cached file isn't corrupt (empty or zero valid vertices)
+        with open(obj_path) as f:
+            if sum(1 for line in f if line.startswith("v ")) > 0:
+                return obj_path
+        os.remove(obj_path)  # corrupt cache — regenerate
+
+    with gzip.open(spz_path, "rb") as f:
+        data = f.read()
+
+    # SPZ header (Niantic/World Labs format):
+    # magic(4) + version(4) + numPoints(4) + shDegree(1) + antialiased(1) + reserved(2)
+    magic, version, num_points, sh_degree = struct.unpack_from("<IIIB", data, 0)
+    assert magic == 0x5053474e, f"Bad SPZ magic: {magic:#010x}"
+    print(f"[SCENE] SPZ: {num_points:,} Gaussians, SH degree {sh_degree}")
+
+    # Positions immediately follow 16-byte header as float32 triplets
+    positions = np.frombuffer(data, dtype=np.float32,
+                              count=num_points * 3, offset=16).reshape(-1, 3)
+
+    # Filter garbage positions (quantization artifact: |v| > 1e6 means bad decode)
+    mask = np.all(np.abs(positions) <= 1e6, axis=1)
+    positions = positions[mask]
+    print(f"[SCENE] SPZ: kept {len(positions):,} / {num_points:,} valid positions")
+    if len(positions) == 0:
+        raise ValueError(
+            "SPZ positions are all out of range — format may use quantized encoding "
+            "not raw float32. Skipping splat."
+        )
+
+    with open(obj_path, "w") as out:
+        out.write("# CHAI Gaussian splat point cloud\n")
+        for x, y, z in positions:
+            out.write(f"v {x:.4f} {y:.4f} {z:.4f}\n")
+    print(f"[SCENE] Splat OBJ → {obj_path}")
+    return obj_path
+
 
 def _glb_to_obj(glb_path: str) -> str:
     """Convert a GLB file to OBJ (cached next to the original). Returns OBJ path."""
@@ -99,24 +198,34 @@ def _glb_to_obj(glb_path: str) -> str:
     return obj_path
 
 
-def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: float = 1.0) -> str:
+def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: float = 1.0,
+                       add_walls: bool = False) -> str:
     """
     Inject the pre-generated World Labs GLB mesh as a static visual body.
 
-    Set CHAI_WORLD_MESH=1 to enable; off by default.
+    When add_walls=True, also injects invisible box colliders around the room perimeter.
+    Floor offset is auto-detected from the GLB bounds so the mesh lands at Z=0.
     """
     glb_path = os.path.abspath(glb_path)
     mesh_path = _glb_to_obj(glb_path)
     s = f"{scale} {scale} {scale}"
     asset_xml = f'  <mesh name="world_mesh" file="{mesh_path}" scale="{s}"/>'
+
+    bounds = detect_glb_bounds(glb_path)
+    offset = bounds["floor_offset"]
+
     # euler="90 0 0": rotates GLB Y-up → MuJoCo Z-up (R_x(90°): y→z, z→-y)
-    # pos="0 0 2.174": lifts mesh so its floor (at Y=-2.174 in GLB world space) lands at Z=0
+    # pos offset lifts mesh so its floor lands at Z=0
     # contype/conaffinity=0: visual-only; robot walks on invisible flat collision floor
     body_xml = (
-        '  <body name="marble_world" pos="0 0 2.174" euler="90 0 0">\n'
-        '    <geom mesh="world_mesh" type="mesh" contype="0" conaffinity="0"/>\n'
-        '  </body>'
+        f'  <body name="marble_world" pos="0 0 {offset:.4f}" euler="90 0 0">\n'
+        f'    <geom mesh="world_mesh" type="mesh" contype="0" conaffinity="0"/>\n'
+        f'  </body>'
     )
+
+    if add_walls:
+        body_xml += "\n  " + generate_wall_colliders(bounds)
+
     # Hide the default checker floor visually (keep it as invisible collision plane)
     xml_string = xml_string.replace(
         'material="groundplane"',
@@ -128,6 +237,20 @@ def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: fl
     else:
         xml_string = xml_string.replace("<mujoco>", f"<mujoco>\n<asset>\n{asset_xml}\n</asset>")
 
+    xml_string = xml_string.replace("</worldbody>", f"\n{body_xml}\n</worldbody>")
+    return xml_string
+
+
+def inject_splat_mesh(xml_string: str, spz_path: str = HQ_SPLAT_SPZ) -> str:
+    """Inject a Gaussian splat point-cloud OBJ as a semi-transparent visual layer."""
+    obj_path = decode_spz_to_obj(os.path.abspath(spz_path))
+    asset_xml = f'  <mesh name="splat_mesh" file="{obj_path}"/>'
+    body_xml = (
+        '  <body name="splat_world" euler="90 0 0">\n'
+        '    <geom mesh="splat_mesh" type="mesh" contype="0" conaffinity="0" rgba="0.85 0.82 0.78 0.5"/>\n'
+        '  </body>'
+    )
+    xml_string = xml_string.replace("<asset>", f"<asset>\n{asset_xml}")
     xml_string = xml_string.replace("</worldbody>", f"\n{body_xml}\n</worldbody>")
     return xml_string
 

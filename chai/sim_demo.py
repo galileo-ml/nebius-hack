@@ -29,7 +29,7 @@ import mujoco
 import mujoco.viewer
 from openai import OpenAI
 
-from sim.scene import patch_scene_xml, inject_marble_mesh
+from sim.scene import patch_scene_xml, inject_marble_mesh, inject_splat_mesh, HQ_MESH_GLB
 from robot.controller import RobotController
 from perception.vlm_loop import PerceptionLoop
 from robot.config import (
@@ -129,17 +129,32 @@ def run_demo(world_mesh: bool = False):
 
     # --- 2. Load MuJoCo model ---
     if world_mesh:
-        print("[DEMO] CHAI_WORLD_MESH=1 — injecting world_envs/event_collider.glb")
+        print("[DEMO] Loading World Labs event hall (HQ mesh + wall colliders + splat)")
         with open(patched_xml) as f:
             xml_str = f.read()
-        xml_str = inject_marble_mesh(xml_str)
+        xml_str = inject_marble_mesh(xml_str, glb_path=HQ_MESH_GLB, add_walls=True)
+        xml_str_with_splat = xml_str
+        try:
+            xml_str_with_splat = inject_splat_mesh(xml_str)
+        except Exception as e:
+            print(f"[DEMO] WARNING: Splat injection failed ({e}) — mesh-only")
         tmp = tempfile.NamedTemporaryFile(
             suffix=".xml", delete=False,
             dir=os.path.dirname(patched_xml)
         )
-        tmp.write(xml_str.encode())
+        tmp.write(xml_str_with_splat.encode())
         tmp.close()
-        model = mujoco.MjModel.from_xml_path(tmp.name)
+        try:
+            model = mujoco.MjModel.from_xml_path(tmp.name)
+        except Exception as e:
+            print(f"[DEMO] WARNING: Model load failed ({e}) — retrying without splat")
+            tmp2 = tempfile.NamedTemporaryFile(
+                suffix=".xml", delete=False,
+                dir=os.path.dirname(patched_xml)
+            )
+            tmp2.write(xml_str.encode())
+            tmp2.close()
+            model = mujoco.MjModel.from_xml_path(tmp2.name)
     else:
         model = mujoco.MjModel.from_xml_path(patched_xml)
     data  = mujoco.MjData(model)
@@ -313,7 +328,7 @@ def run_demo(world_mesh: bool = False):
     print("[DEMO] Opening MuJoCo viewer... close the window to exit.")
     try:
         camera_renderer = mujoco.Renderer(model, height=480, width=640)
-        with mujoco.viewer.launch_passive(model, data) as viewer:
+        with mujoco.viewer.launch_passive(model, data, width=1280, height=720) as viewer:
             viewer.cam.type      = mujoco.mjtCamera.mjCAMERA_FREE
             viewer.cam.distance  = 7.0
             viewer.cam.azimuth   = 135
@@ -345,6 +360,6 @@ def run_demo(world_mesh: bool = False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--world-mesh", action="store_true", default=False,
-                        help="Load world_envs/event_collider.glb as static environment")
+                        help="Load World Labs event hall (HQ mesh + wall colliders + Gaussian splat)")
     args = parser.parse_args()
     run_demo(world_mesh=args.world_mesh)
