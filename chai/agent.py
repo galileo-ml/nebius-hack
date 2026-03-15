@@ -27,17 +27,16 @@ Action vocabulary:
   sweep_left   — stop and sweep left arm to clear the obstacle. Use when obstacle is to the left side and can be shoveled/swept.
   kick         — stop and kick the obstacle forward with right foot. Use when obstacle is directly centered in front, distance is "near" (<=1.0m), and it can be kicked.
   signal_clear — turn to face the human and wave to signal path is clear. Use after clearing an obstacle.
-  signal_stop  — turn to face the human and hold up a hand to signal them to stop. Use BEFORE clearing a hazard.
+  signal_stop  — turn to face the human and hold up a hand to signal them to stop.
 
 Decision guidelines for obstacles:
   - If an obstacle is detected with distance "far" or "medium" (>1.0m): action=walk or slow (approach it)
   - If an obstacle is detected with distance "near" (<=1.0m):
-      Step 1: action=signal_stop (if signal_stop_already_applied is false)
-      Step 2: If can_kick_or_shove is true and side is "center", action=kick (if kick_already_applied is false)
+      Step 1: If can_kick_or_shove is true and side is "center", action=kick (if kick_already_applied is false)
               If can_kick_or_shove is true and side is "left" or "right", action=sweep_left or sweep_right (if sweep_already_applied is false)
               If can_kick_or_shove is false or null, action=stop
-      Step 3: action=signal_clear (if kick or sweep is done, but signal_clear_already_applied is false)
-      Step 4: action=walk (if all the above are done)
+      Step 2: action=signal_clear (if kick or sweep is done, but signal_clear_already_applied is false)
+      Step 3: action=walk (if all the above are done)
   - ALWAYS check 'robot' context to see if an action is in progress. If action_in_progress != "none", output action=stop so it can finish!
 
 Output ONLY valid JSON with this exact schema:
