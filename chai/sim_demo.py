@@ -182,6 +182,8 @@ def run_demo(world_mesh: bool = False):
     _sweep_start    = None
     _sweep_action   = None
     _sweep_applied  = False
+    _kick_start     = None
+    _kick_applied   = False
     _signal_start   = None
     _signal_applied = False
     _signal_stop_start = None
@@ -189,7 +191,7 @@ def run_demo(world_mesh: bool = False):
     _last_speech_ts = [0.0]   # list so nonlocal write works in nested fn
 
     def tick_fn():
-        nonlocal sim_step, _sweep_start, _sweep_action, _sweep_applied, _signal_start, _signal_applied, _signal_stop_start, _signal_stop_applied
+        nonlocal sim_step, _sweep_start, _sweep_action, _sweep_applied, _kick_start, _kick_applied, _signal_start, _signal_applied, _signal_stop_start, _signal_stop_applied
 
         # 1. Sim geometry (ground truth, never stale)
         sim_dist = compute_chair_distance(model, data)
@@ -200,12 +202,14 @@ def run_demo(world_mesh: bool = False):
             robot_context = {
                 "sim_dist_to_obstacle_m": round(sim_dist, 2),
                 "action_in_progress": (
-                    "sweep" if _sweep_start else 
-                    "signal_stop" if _signal_stop_start else 
-                    "signal_clear" if _signal_start else "none"
+                    "sweep"        if _sweep_start       else
+                    "kick"         if _kick_start        else
+                    "signal_stop"  if _signal_stop_start else
+                    "signal_clear" if _signal_start      else "none"
                 ),
                 "signal_stop_already_applied": _signal_stop_applied,
                 "sweep_already_applied": _sweep_applied,
+                "kick_already_applied": _kick_applied,
                 "signal_clear_already_applied": _signal_applied,
             }
             agent.update_perception(percept, robot_context)
@@ -218,7 +222,7 @@ def run_demo(world_mesh: bool = False):
             _speak(decision.speech)
             _last_speech_ts[0] = decision.timestamp
 
-        # 5. Execute action — sweep/signal take priority once started
+        # 5. Execute action — sweep/kick/signal take priority once started
         if _sweep_start is not None:
             elapsed = time.time() - _sweep_start
             if _sweep_action == "sweep_left":
@@ -238,6 +242,26 @@ def run_demo(world_mesh: bool = False):
                 print("[DEMO] Sweep complete")
                 _sweep_start = None
                 _sweep_action = None
+        elif _kick_start is not None:
+            elapsed = time.time() - _kick_start
+            robot.arm.kick_tick(elapsed)
+            # Artificially launch chair forward during kick follow-through
+            if 0.6 <= elapsed <= 0.8:
+                try:
+                    chair_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "chair")
+                    chair_dof = model.jnt_dofadr[chair_jid]
+                    data.qvel[chair_dof:chair_dof+3]   = [5.0, 0.0, 3.0]   # forward + up
+                    data.qvel[chair_dof+3:chair_dof+6] = [0.5, 0.5, 0.5]
+                except Exception:
+                    pass
+            if elapsed >= 1.5:
+                print("[DEMO] Kick complete")
+                _kick_start = None
+        elif decision.action == "kick" and not _kick_applied:
+            robot.stop()
+            _kick_start   = time.time()
+            _kick_applied = True
+            print("[DEMO] Starting kick")
         elif _signal_start is not None:
             elapsed = time.time() - _signal_start
             if elapsed < 1.5:

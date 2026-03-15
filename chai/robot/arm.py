@@ -69,6 +69,39 @@ class ArmController:
         target = (1 - alpha) * waypoints[seg_idx] + alpha * waypoints[seg_idx + 1]
         self._send_arm_joints(target, self.LEFT_ARM_JOINTS)
 
+    def kick_tick(self, elapsed, duration=1.5):
+        """Kick right leg forward. Call each tick during kick sequence."""
+        waypoints = [
+            np.array([0.0,  0.0, 0.0, 0.0,  0.0, 0.0]),   # neutral
+            np.array([-0.3, 0.0, 0.0, 0.5,  0.0, 0.0]),   # wind-up (cock leg back)
+            np.array([0.8,  0.0, 0.0, 0.0, -0.3, 0.0]),   # kick (hip fwd, extend knee)
+            np.array([0.5,  0.0, 0.0, 0.2,  0.0, 0.0]),   # follow-through
+            np.array([0.0,  0.0, 0.0, 0.0,  0.0, 0.0]),   # retract
+        ]
+        RIGHT_LEG = list(range(6, 12))
+        LEFT_LEG  = list(range(0, 6))
+        KP_LEG = 100.0
+        KD_LEG = 10.0
+
+        n_segments = len(waypoints) - 1
+        seg_dur = duration / n_segments
+        seg_idx = min(int(elapsed / seg_dur), n_segments - 1)
+        alpha = float(np.clip((elapsed - seg_idx * seg_dur) / seg_dur, 0.0, 1.0))
+        target = (1 - alpha) * waypoints[seg_idx] + alpha * waypoints[seg_idx + 1]
+
+        qpos = self.robot.data.qpos[7:]   # joint positions (skip free-joint)
+        qvel = self.robot.data.qvel[6:]   # joint velocities
+
+        # Right leg: kick trajectory
+        for i, j in enumerate(RIGHT_LEG):
+            torque = KP_LEG * (target[i] - qpos[j]) - KD_LEG * qvel[j]
+            self.robot.data.ctrl[j] = torque
+
+        # Left leg: hold standing posture (target = 0)
+        for i, j in enumerate(LEFT_LEG):
+            torque = KP_LEG * (0.0 - qpos[j]) - KD_LEG * qvel[j]
+            self.robot.data.ctrl[j] = torque
+
     def clear_right(self, duration=2.0):
         """Extend right arm forward, sweep left, retract."""
         print("[ARM] Clearing obstacle on right...")
