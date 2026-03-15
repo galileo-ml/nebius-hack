@@ -51,19 +51,23 @@ PERSON_MARKER_XML = """    <body name="person_marker" pos="-1.5 0 0">
       <!-- torso -->
       <geom type="capsule" size="0.13 0.25" pos="0 0 1.15" rgba="0.3 0.4 0.7 1" contype="0" conaffinity="0"/>
       <!-- left upper arm -->
-      <geom type="capsule" size="0.04 0.13" pos="0.22 0 1.25" euler="0 90 0" rgba="0.3 0.4 0.7 1" contype="0" conaffinity="0"/>
+      <geom type="capsule" size="0.04 0.13" pos="0 0.18 1.15" euler="0 0 0" rgba="0.3 0.4 0.7 1" contype="0" conaffinity="0"/>
+      <!-- left lower arm -->
+      <geom type="capsule" size="0.035 0.12" pos="0 0.18 0.86" euler="0 0 0" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
       <!-- right upper arm -->
-      <geom type="capsule" size="0.04 0.13" pos="-0.22 0 1.25" euler="0 90 0" rgba="0.3 0.4 0.7 1" contype="0" conaffinity="0"/>
+      <geom type="capsule" size="0.04 0.13" pos="0 -0.18 1.15" euler="0 0 0" rgba="0.3 0.4 0.7 1" contype="0" conaffinity="0"/>
+      <!-- right lower arm (bent forward to hold cane) -->
+      <geom type="capsule" size="0.035 0.12" pos="0.1 -0.18 0.98" euler="0 90 0" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
       <!-- pelvis -->
-      <geom type="box" size="0.11 0.07 0.07" pos="0 0 0.78" rgba="0.2 0.2 0.6 1" contype="0" conaffinity="0"/>
+      <geom type="box" size="0.11 0.14 0.07" pos="0 0 0.78" rgba="0.2 0.2 0.6 1" contype="0" conaffinity="0"/>
       <!-- left thigh -->
-      <geom type="capsule" size="0.05 0.2" pos="0.09 0 0.52" rgba="0.2 0.2 0.6 1" contype="0" conaffinity="0"/>
+      <geom type="capsule" size="0.05 0.2" pos="0 0.09 0.52" rgba="0.2 0.2 0.6 1" contype="0" conaffinity="0"/>
       <!-- right thigh -->
-      <geom type="capsule" size="0.05 0.2" pos="-0.09 0 0.52" rgba="0.2 0.2 0.6 1" contype="0" conaffinity="0"/>
+      <geom type="capsule" size="0.05 0.2" pos="0 -0.09 0.52" rgba="0.2 0.2 0.6 1" contype="0" conaffinity="0"/>
       <!-- left shin -->
-      <geom type="capsule" size="0.04 0.18" pos="0.09 0 0.22" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
+      <geom type="capsule" size="0.04 0.18" pos="0 0.09 0.22" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
       <!-- right shin -->
-      <geom type="capsule" size="0.04 0.18" pos="-0.09 0 0.22" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
+      <geom type="capsule" size="0.04 0.18" pos="0 -0.09 0.22" rgba="0.9 0.7 0.5 1" contype="0" conaffinity="0"/>
       <!-- mass carrier (invisible) -->
       <geom type="sphere" size="0.01" pos="0 0 0.9" rgba="0 0 0 0" mass="60"/>
       <!-- sunglasses left lens -->
@@ -72,9 +76,38 @@ PERSON_MARKER_XML = """    <body name="person_marker" pos="-1.5 0 0">
       <geom type="box" size="0.04 0.035 0.015" pos="0.105 -0.055 1.635" rgba="0.05 0.05 0.05 0.9" contype="0" conaffinity="0"/>
       <!-- sunglasses bridge -->
       <geom type="box" size="0.005 0.015 0.008" pos="0.105 0.0 1.635" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
-      <!-- white cane -->
-      <geom type="capsule" size="0.012 0.58" pos="-0.05 0.22 0.58" euler="-12 -8 0" rgba="0.95 0.95 0.95 1" contype="0" conaffinity="0"/>
+      <!-- white cane (in right hand) -->
+      <geom type="capsule" size="0.012 0.58" pos="0.51 -0.18 0.48" euler="0 30 0" rgba="0.95 0.95 0.95 1" contype="0" conaffinity="0"/>
     </body>"""
+
+
+WORLD_ENV_GLB = os.path.join(
+    os.path.dirname(__file__), "../../world_envs/event_collider.glb"
+)
+
+
+def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: float = 0.1) -> str:
+    """
+    Inject the pre-generated World Labs GLB mesh as a static collision body.
+
+    Set CHAI_WORLD_MESH=1 to enable; off by default.
+    """
+    glb_path = os.path.abspath(glb_path)
+    s = f"{scale} {scale} {scale}"
+    asset_xml = f'  <mesh name="world_mesh" file="{glb_path}" scale="{s}"/>'
+    body_xml = (
+        '  <body name="marble_world" pos="0 0 0">\n'
+        '    <geom mesh="world_mesh" type="mesh" contype="1" conaffinity="1"/>\n'
+        '  </body>'
+    )
+
+    if "<asset>" in xml_string:
+        xml_string = xml_string.replace("<asset>", f"<asset>\n{asset_xml}")
+    else:
+        xml_string = xml_string.replace("<mujoco>", f"<mujoco>\n<asset>\n{asset_xml}\n</asset>")
+
+    xml_string = xml_string.replace("</worldbody>", f"\n{body_xml}\n</worldbody>")
+    return xml_string
 
 
 def patch_scene_xml(source_path: str) -> str:

@@ -40,3 +40,5 @@ checkpoints/*.pth
 
 # Temp audio files
 *.mp3
+
+world_envs

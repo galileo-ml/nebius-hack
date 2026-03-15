@@ -18,6 +18,8 @@ What you'll see:
 import sys
 import os
 import time
+import argparse
+import tempfile
 
 # Allow imports from the chai package without installing
 sys.path.insert(0, os.path.dirname(__file__))
@@ -27,7 +29,7 @@ import mujoco
 import mujoco.viewer
 from openai import OpenAI
 
-from sim.scene import patch_scene_xml
+from sim.scene import patch_scene_xml, inject_marble_mesh
 from robot.controller import RobotController
 from perception.vlm_loop import PerceptionLoop
 from robot.config import (
@@ -51,23 +53,20 @@ def _speak(text):
         pass
 
 
-def _move_person(model, data, step, moving=True):
-    """Advance person_marker along a slow arc each simulation step."""
+def _move_person(model, data, robot_xy):
+    """Move person_marker toward robot, keeping ~1.5m following distance."""
     joint_id  = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "person_marker")
     qpos_addr = model.jnt_qposadr[joint_id]
     dof_addr  = model.jnt_dofadr[joint_id]
-
-    if moving:
-        dt      = model.opt.timestep
-        speed   = 0.2
-        turn    = 0.15
-        x       = data.qpos[qpos_addr + 0]
-        y       = data.qpos[qpos_addr + 1]
-        heading = step * dt * turn
-        data.qpos[qpos_addr + 0] = x + speed * dt * np.cos(heading)
-        data.qpos[qpos_addr + 1] = y + speed * dt * np.sin(heading)
-
-    # Always pin Z and keep upright orientation, zero all velocity
+    person_xy = data.qpos[qpos_addr : qpos_addr + 2].copy()
+    delta = robot_xy - person_xy
+    dist  = np.linalg.norm(delta)
+    if dist > 1.5:                            # keep ~1.5m following distance
+        dt        = model.opt.timestep
+        speed     = 0.6                       # m/s
+        direction = delta / dist
+        data.qpos[qpos_addr + 0] += direction[0] * speed * dt
+        data.qpos[qpos_addr + 1] += direction[1] * speed * dt
     data.qpos[qpos_addr + 2] = 0.0
     data.qpos[qpos_addr + 3] = 1.0
     data.qpos[qpos_addr + 4] = 0.0
@@ -93,7 +92,7 @@ def _run_headless(model, data, robot, tick_fn):
         print("[DEMO] pip install opencv-python  for headless display; running blind.")
         cv2 = None
 
-    renderer = mujoco.Renderer(model, height=900, width=1200)
+    renderer = mujoco.Renderer(model, height=480, width=640)
     cam = mujoco.MjvCamera()
     mujoco.mjv_defaultFreeCamera(model, cam)
     cam.distance  = 7.0
@@ -123,13 +122,26 @@ def _run_headless(model, data, robot, tick_fn):
         cv2.destroyAllWindows()
 
 
-def run_demo():
+def run_demo(world_mesh: bool = False):
     # --- 1. Patch scene XML ---
     patched_xml = patch_scene_xml(SCENE_XML)
     print(f"[DEMO] Loaded patched scene: {patched_xml}")
 
     # --- 2. Load MuJoCo model ---
-    model = mujoco.MjModel.from_xml_path(patched_xml)
+    if world_mesh:
+        print("[DEMO] CHAI_WORLD_MESH=1 — injecting world_envs/event_collider.glb")
+        with open(patched_xml) as f:
+            xml_str = f.read()
+        xml_str = inject_marble_mesh(xml_str)
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".xml", delete=False,
+            dir=os.path.dirname(patched_xml)
+        )
+        tmp.write(xml_str.encode())
+        tmp.close()
+        model = mujoco.MjModel.from_xml_path(tmp.name)
+    else:
+        model = mujoco.MjModel.from_xml_path(patched_xml)
     data  = mujoco.MjData(model)
 
     # --- 3. Create robot controller ---
@@ -170,11 +182,13 @@ def run_demo():
     _sweep_start    = None
     _sweep_action   = None
     _kick_applied   = False
+    _kick_start     = None
     _signal_start   = None
+    _signal_stop_start = None
     _last_speech_ts = [0.0]   # list so nonlocal write works in nested fn
 
     def tick_fn():
-        nonlocal sim_step, _sweep_start, _sweep_action, _kick_applied, _signal_start
+        nonlocal sim_step, _sweep_start, _sweep_action, _kick_applied, _kick_start, _signal_start, _signal_stop_start
 
         # 1. Sim geometry (ground truth, never stale)
         sim_dist = compute_chair_distance(model, data)
@@ -218,17 +232,41 @@ def run_demo():
             else:
                 _signal_start = None
                 print("[DEMO] Signal complete")
+        elif _signal_stop_start is not None:
+            elapsed = time.time() - _signal_stop_start
+            if elapsed < 1.5:
+                robot.loco.send_velocity(vx=0, vy=0, omega=-2.0)  # turn to face human
+            elif elapsed < 4.5:
+                robot.stop()
+                robot.arm.stop_gesture_tick(elapsed - 1.5, duration=3.0)
+            else:
+                _signal_stop_start = None
+                print("[DEMO] Signal stop complete")
+        elif _kick_start is not None:
+            elapsed = time.time() - _kick_start
+            robot.stop()                         # base stays still
+            robot.loco.kick_tick(elapsed)        # override right leg after stop
+            if 0.28 <= elapsed <= 0.38:          # at kick peak, fly the chair
+                chair_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "chair")
+                chair_dof = model.jnt_dofadr[chair_jid]
+                data.qvel[chair_dof:chair_dof+3]   = [0.0, 7.0, 4.0]
+                data.qvel[chair_dof+3:chair_dof+6] = [2.0, 0.0, 1.0]
+            if elapsed >= 0.8:
+                _kick_start = None
+                print("[DEMO] Kick complete")
         elif decision.action == "kick_chair" and not _kick_applied:
-            chair_jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "chair")
-            chair_dof = model.jnt_dofadr[chair_jid]
-            data.qvel[chair_dof:chair_dof+3] = [0.0, 7.0, 4.0]    # fly sideways + upward
-            data.qvel[chair_dof+3:chair_dof+6] = [2.0, 0.0, 1.0]  # spin for drama
+            robot.stop()
+            _kick_start   = time.time()
             _kick_applied = True
-            print("[DEMO] KICK! Chair sent flying")
+            print("[DEMO] Starting kick")
         elif decision.action == "signal_clear" and _signal_start is None:
             robot.stop()
             _signal_start = time.time()
             print("[DEMO] Signaling path clear to human")
+        elif decision.action == "signal_stop" and _signal_stop_start is None:
+            robot.stop()
+            _signal_stop_start = time.time()
+            print("[DEMO] Signaling stop to human")
         elif decision.action == "walk":
             robot.loco.send_velocity(vx=decision.vx or 0.35, vy=0, omega=0)
         elif decision.action == "slow":
@@ -241,10 +279,8 @@ def run_demo():
             _sweep_action = decision.action
             print(f"[DEMO] Starting {decision.action}")
 
-        # 6. Move person (follow robot when moving)
-        _move_person(model, data, sim_step,
-                     moving=(decision.action in ("walk", "slow"))
-                             and _signal_start is None)
+        # 6. Move person (always follows robot)
+        _move_person(model, data, data.qpos[0:2].copy())
         sim_step += 1
 
     # --- 8. Launch viewer (interactive or headless fallback) ---
@@ -281,4 +317,8 @@ def run_demo():
 
 
 if __name__ == "__main__":
-    run_demo()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--world-mesh", action="store_true", default=False,
+                        help="Load world_envs/event_collider.glb as static environment")
+    args = parser.parse_args()
+    run_demo(world_mesh=args.world_mesh)

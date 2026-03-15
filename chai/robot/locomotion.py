@@ -60,33 +60,52 @@ class LocomotionController:
         target = np.zeros(self.model.nu)
 
         # Standing posture constants
-        HIP_PITCH_BIAS = 0.25   # thighs angled forward at rest (rad)
+        HIP_PITCH_BIAS = 0.50   # thighs angled forward at rest (rad)
         KNEE_BIAS      = 0.35   # constant knee bend for compliance (rad)
         ANKLE_BIAS     = -0.20  # ankle compensates for knee bend (rad)
 
         if vx > 0.01 and self.policy is None:
             t     = self.data.time
-            freq  = 1.5
-            amp   = min(0.65, vx * 1.8)
+            freq  = 1.2
+            amp   = min(0.40, vx * 1.2)
             phase = 2 * np.pi * freq * t
 
-            # L leg: forward swing when sin(phase) > 0
-            target[0]  =  HIP_PITCH_BIAS + amp * np.sin(phase)              # L hip_pitch
-            target[1]  =  0.08 * np.sin(phase)                              # L hip_roll (lateral sway)
-            target[2]  =  0.12 * np.sin(phase)                              # L hip_yaw (cross-step)
-            target[3]  =  KNEE_BIAS + amp * 0.6 * max(0, np.sin(phase))     # L knee lifts during forward swing
-            target[4]  =  ANKLE_BIAS - amp * 0.4 * np.sin(phase)            # L ankle
+            # Base hip pitch (stance and swing)
+            L_hip = HIP_PITCH_BIAS + amp * np.sin(phase)
+            R_hip = HIP_PITCH_BIAS + amp * np.sin(phase + np.pi)
 
-            # R leg: opposite phase
-            target[6]  =  HIP_PITCH_BIAS + amp * np.sin(phase + np.pi)      # R hip_pitch
-            target[7]  = -0.08 * np.sin(phase)                              # R hip_roll (mirror)
-            target[8]  =  0.12 * np.sin(phase + np.pi)                      # R hip_yaw (cross-step)
-            target[9]  =  KNEE_BIAS + amp * 0.6 * max(0, np.sin(phase + np.pi))  # R knee
-            target[10] =  ANKLE_BIAS - amp * 0.4 * np.sin(phase + np.pi)   # R ankle
+            # Knee bends during swing phase (when cos > 0)
+            L_knee = KNEE_BIAS + amp * 1.5 * max(0, np.cos(phase))
+            R_knee = KNEE_BIAS + amp * 1.5 * max(0, np.cos(phase + np.pi))
 
-            # Arm swing unchanged
-            target[15] =  0.3 * np.sin(phase + np.pi)   # L shoulder_pitch
-            target[22] =  0.3 * np.sin(phase)            # R shoulder_pitch
+            # Ankle compensates for knee and hip to keep foot roughly parallel to ground
+            L_ankle = ANKLE_BIAS - 0.5 * (L_knee - KNEE_BIAS) + 0.2 * (L_hip - HIP_PITCH_BIAS)
+            R_ankle = ANKLE_BIAS - 0.5 * (R_knee - KNEE_BIAS) + 0.2 * (R_hip - HIP_PITCH_BIAS)
+
+            # Lateral sway (shift weight over the stance leg)
+            sway = 0.08 * np.sin(phase)
+
+            # L leg
+            target[0]  = L_hip
+            target[1]  = sway
+            target[2]  = 0.0
+            target[3]  = L_knee
+            target[4]  = L_ankle
+
+            # R leg
+            target[6]  = R_hip
+            target[7]  = sway
+            target[8]  = 0.0
+            target[9]  = R_knee
+            target[10] = R_ankle
+
+            # Arm swing (opposite to legs)
+            target[15] = 0.4 * np.sin(phase + np.pi)   # L shoulder_pitch
+            target[22] = 0.4 * np.sin(phase)           # R shoulder_pitch
+            
+            # Elbows slightly bent for a more natural look
+            target[18] = 0.3                           # L elbow
+            target[25] = 0.3                           # R elbow
 
         else:
             # Standing still — maintain posture so legs don't collapse to 0
@@ -153,6 +172,27 @@ class LocomotionController:
         gy = 2 * (y * z + w * x)
         gz = 1 - 2 * (x * x + y * y)
         return np.array([gx, gy, gz])
+
+    def kick_tick(self, elapsed, duration=0.8):
+        """Non-blocking right leg kick. Call each tick AFTER send_velocity to override right leg."""
+        waypoints = [
+            np.array([0.50, 0.0, 0.0, 0.35, -0.20, 0.0]),  # standing
+            np.array([1.20, 0.0, 0.0, 0.80, -0.10, 0.0]),  # wind-up (pull back, bend knee)
+            np.array([-0.80, 0.0, 0.0, 0.00,  0.00, 0.0]),  # kick (thrust forward, extend)
+            np.array([0.50, 0.0, 0.0, 0.35, -0.20, 0.0]),  # return to standing
+        ]
+        RIGHT_LEG  = list(range(6, 12))
+        n_segments = len(waypoints) - 1
+        seg_dur    = duration / n_segments
+        seg_idx    = min(int(elapsed / seg_dur), n_segments - 1)
+        alpha      = float(np.clip((elapsed - seg_idx * seg_dur) / seg_dur, 0.0, 1.0))
+        # Smoothstep interpolation for more natural movement
+        alpha      = alpha * alpha * (3 - 2 * alpha)
+        target     = (1 - alpha) * waypoints[seg_idx] + alpha * waypoints[seg_idx + 1]
+        qpos_j = self.data.qpos[7:]
+        qvel_j = self.data.qvel[6:]
+        for i, j in enumerate(RIGHT_LEG):
+            self.data.ctrl[j] = _KP[j] * (target[i] - qpos_j[j]) - _KD[j] * qvel_j[j]
 
     def _real_velocity_cmd(self, vx, vy, omega):
         from unitree_sdk2py.idl.unitree_hg.msg.dds_ import LowCmd_

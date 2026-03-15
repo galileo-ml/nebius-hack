@@ -14,7 +14,7 @@ from collections import deque
 from dataclasses import dataclass, field
 
 
-VALID_ACTIONS = {"walk", "slow", "stop", "sweep_left", "sweep_right", "kick_chair", "signal_clear"}
+VALID_ACTIONS = {"walk", "slow", "stop", "sweep_left", "sweep_right", "kick_chair", "signal_clear", "signal_stop"}
 
 SYSTEM_PROMPT = """You are the decision-making brain of a blind-guide robot (Unitree G1).
 You walk ahead of a visually impaired user, detect obstacles, clear them with your arm, and narrate the environment.
@@ -29,20 +29,22 @@ Action vocabulary:
                  in path and within 1.2m. Use only once; resume walking after.
   signal_clear — turn to face the human and wave to signal path is clear.
                  Use once after obstacle is gone and path is confirmed open.
+  signal_stop  — turn to face the human and hold up a hand to signal them to stop.
+                 Use when there's an immediate hazard or before clearing a large obstacle.
 
 Decision guidelines:
   - If no obstacle: action=walk
   - If obstacle detected far (>1.5m): action=slow, warn user verbally
-  - If obstacle detected medium (0.5-1.5m): action=stop, then sweep based on side
-  - If obstacle within 0.8-1.2m and directly ahead: action=kick_chair
-  - If obstacle detected near (<0.5m) or sim_dist < 1.0m: action=stop (safety)
+  - If the obstacle is a chair (any distance up to 1.5m): action=kick_chair (prioritize kicking the chair out of the way, do not go around it).
+  - If obstacle detected medium (0.5-1.5m) and it is NOT a chair: action=stop, then sweep based on side
+  - If obstacle detected near (<0.5m) or sim_dist < 1.0m (and you haven't decided to kick): action=stop (safety)
   - If sweep is in progress (sweep_in_progress=true): action=stop (let sweep finish)
   - If path just cleared and obstacle is gone: action=signal_clear (once)
   - If human detected: greet or warn the user
   - Always generate helpful speech narrating what you see and what you're doing
 
 Output ONLY valid JSON with this exact schema:
-{"action": "walk|slow|stop|sweep_left|sweep_right|kick_chair|signal_clear", "vx": 0.35, "speech": "text or null", "reasoning": "brief"}
+{"action": "walk|slow|stop|sweep_left|sweep_right|kick_chair|signal_clear|signal_stop", "vx": 0.35, "speech": "text or null", "reasoning": "brief"}
 """
 
 _STALE_TIMEOUT = 5.0  # seconds before a decision is considered stale
