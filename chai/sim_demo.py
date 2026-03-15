@@ -93,7 +93,7 @@ def _run_headless(model, data, robot, tick_fn):
         print("[DEMO] pip install opencv-python  for headless display; running blind.")
         cv2 = None
 
-    renderer = mujoco.Renderer(model, height=480, width=640)
+    renderer = mujoco.Renderer(model, height=900, width=1200)
     cam = mujoco.MjvCamera()
     mujoco.mjv_defaultFreeCamera(model, cam)
     cam.distance  = 7.0
@@ -232,13 +232,16 @@ def run_demo():
             viewer.cam.azimuth   = 135
             viewer.cam.elevation = -25
 
+            step = 0
             while viewer.is_running():
                 t = time.time()
                 tick_fn()
                 mujoco.mj_step(model, data)
-                camera_renderer.update_scene(data, camera=SIM_CONFIG["camera"])
-                robot.push_sim_frame(camera_renderer.render())
+                if step % 30 == 0:
+                    camera_renderer.update_scene(data, camera=SIM_CONFIG["camera"])
+                    robot.push_sim_frame(camera_renderer.render())
                 viewer.sync()
+                step += 1
                 elapsed = time.time() - t
                 sleep_t = model.opt.timestep - elapsed
                 if sleep_t > 0:
