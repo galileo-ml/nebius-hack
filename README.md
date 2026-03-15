@@ -34,22 +34,12 @@ git clone https://github.com/your-org/nebius-hack.git
 cd nebius-hack
 ```
 
-**Option A — uv (recommended, fast):**
 ```bash
 pip install uv          # once, if you don't have it
-uv venv .venv
-source .venv/bin/activate
+uv venv venv
+source venv/bin/activate
 uv pip install -r requirements.txt
 ```
-
-**Option B — standard venv:**
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-On Windows replace `source .venv/bin/activate` with `.venv\Scripts\activate`.
 
 **For real hardware** — uncomment and install the Unitree SDK:
 ```bash
@@ -68,7 +58,14 @@ git clone https://github.com/unitreerobotics/unitree_mujoco.git
 ### API key
 
 ```bash
-export NEBIUS_API_KEY="your-key-here"
+cp .env.example .env.local
+# then edit .env.local and fill in your key
+```
+
+`.env.local` is git-ignored. Load it before running:
+
+```bash
+export $(cat .env.local | xargs)
 ```
 
 ### Sim vs real mode

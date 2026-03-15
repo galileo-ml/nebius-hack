@@ -28,6 +28,7 @@ Thumbs.db
 # Secrets / config
 .env
 *.env
+.env.local
 
 # Model checkpoints
 checkpoints/*.pt
