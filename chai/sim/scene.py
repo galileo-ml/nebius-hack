@@ -86,6 +86,18 @@ WORLD_ENV_GLB = os.path.join(
 )
 
 
+def _glb_to_obj(glb_path: str) -> str:
+    """Convert a GLB file to OBJ (cached next to the original). Returns OBJ path."""
+    obj_path = glb_path[:-4] + ".obj"
+    if not os.path.exists(obj_path):
+        import trimesh
+        scene = trimesh.load(glb_path, force="scene")
+        combined = trimesh.util.concatenate(list(scene.geometry.values()))
+        combined.export(obj_path)
+        print(f"[SCENE] Converted {glb_path} → {obj_path}")
+    return obj_path
+
+
 def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: float = 0.1) -> str:
     """
     Inject the pre-generated World Labs GLB mesh as a static collision body.
@@ -93,8 +105,9 @@ def inject_marble_mesh(xml_string: str, glb_path: str = WORLD_ENV_GLB, scale: fl
     Set CHAI_WORLD_MESH=1 to enable; off by default.
     """
     glb_path = os.path.abspath(glb_path)
+    mesh_path = _glb_to_obj(glb_path)
     s = f"{scale} {scale} {scale}"
-    asset_xml = f'  <mesh name="world_mesh" file="{glb_path}" scale="{s}"/>'
+    asset_xml = f'  <mesh name="world_mesh" file="{mesh_path}" scale="{s}"/>'
     body_xml = (
         '  <body name="marble_world" pos="0 0 0">\n'
         '    <geom mesh="world_mesh" type="mesh" contype="1" conaffinity="1"/>\n'
